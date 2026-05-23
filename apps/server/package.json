@@ -2,16 +2,22 @@
     "name": "server",
     "version": "1.0.0",
     "private": true,
-    "main": "src/server.js",
+    "main": "src/index.ts",
     "scripts": {
-        "start": "node src/server.js",
-        "dev": "nodemon src/server.js"
+        "start": "tsx src/index.ts",
+        "dev": "tsx watch src/index.ts"
     },
     "packageManager": "pnpm@10.33.2",
     "dependencies": {
+        "cors": "^2.8.6",
         "express": "^5.2.1"
     },
     "devDependencies": {
-        "nodemon": "^3.1.14"
+        "@types/cors": "^2.8.19",
+        "@types/express": "^5.0.6",
+        "@types/node": "^20.19.39",
+        "nodemon": "^3.1.14",
+        "tsx": "^4.22.3",
+        "typescript": "^5.9.3"
     }
 }
