@@ -1,1 +1,14 @@
 @import "tailwindcss";
+
+html {
+    scroll-behavior: smooth;
+}
+
+body {
+    font-family: var(--font-geist-sans), system-ui, sans-serif;
+}
+
+::selection {
+    background: rgba(249, 115, 22, 0.2);
+    color: #111827;
+}

@@ -1,130 +1,170 @@
 "use client";
 
-import { useEffect, useRef, useState, useCallback } from "react";
+import Link from "next/link";
+import { useCallback, useEffect, useRef, useState } from "react";
 
-export default function PromoCarousel() {
-    const [current, setCurrent] = useState(0);
-    const trackRef = useRef<HTMLDivElement | null>(null);
+import type { Store } from "../lib/munchies";
 
-    const campaigns = [
-        {
-            id: 1,
-            title: "Midnight Craving Sale",
-            desc: "Get 20% off on all late-night snacks across selected hostels.",
-            tag: "Limited Time Offer",
-            bg: "from-orange-500 to-red-500",
-            btnText: "text-orange-600",
-        },
-        {
-            id: 2,
-            title: "Caffeine Rush",
-            desc: "Buy 1 Get 1 Free on all Cold Coffees at BH-2.",
-            tag: "Weekend Special",
-            bg: "from-blue-500 to-indigo-600",
-            btnText: "text-blue-600",
-        },
-        {
-            id: 3,
-            title: "Mega Maggi Fest",
-            desc: "Free extra cheese on all Maggi orders above ₹100.",
-            tag: "New Arrival",
-            bg: "from-yellow-400 to-orange-500",
-            btnText: "text-orange-600",
-        },
+type Promo = {
+    id: number;
+    title: string;
+    subtitle: string;
+    storeId?: string;
+    ctaLabel: string;
+};
+
+type Props = {
+    stores: Store[];
+};
+
+const fallbackPromos: Promo[] = [
+    {
+        id: 1,
+        title: "Browse nearby stores",
+        subtitle: "Find the closest campus options and jump straight into ordering.",
+        ctaLabel: "Explore stores",
+    },
+    {
+        id: 2,
+        title: "Quick hostel pickup",
+        subtitle: "Keep your order local, simple, and ready when you are.",
+        ctaLabel: "See hostels",
+    },
+    {
+        id: 3,
+        title: "Late-night comfort",
+        subtitle: "Open the menu, pick your favorites, and place one easy order.",
+        ctaLabel: "Order now",
+    },
+];
+
+function getPromoBackground(index: number) {
+    const backgrounds = [
+        "from-orange-500 via-amber-500 to-rose-500",
+        "from-emerald-500 via-teal-500 to-cyan-500",
+        "from-indigo-500 via-violet-500 to-fuchsia-500",
     ];
 
-    // 1. Wrapped in useCallback so we can safely use it inside useEffect
-    const scrollToSlide = useCallback((index: number) => {
-        const track = trackRef.current;
-        if (!track) return;
+    return backgrounds[index % backgrounds.length];
+}
 
-        track.scrollTo({
-            left: index * track.clientWidth,
+export default function PromoCarousel({ stores }: Props) {
+    const [current, setCurrent] = useState(0);
+    const containerRef = useRef<HTMLDivElement>(null);
+
+    const promos: Promo[] =
+        stores.length > 0
+            ? stores.slice(0, 3).map((store, index) => ({
+                id: index + 1,
+                title: store.name,
+                subtitle:
+                    store.tagline ||
+                    `Order from ${store.hostel} Room ${store.room} in a couple of taps.`,
+                storeId: store.id,
+                ctaLabel: "Order now",
+            }))
+            : fallbackPromos;
+
+    const scrollToSlide = useCallback((index: number) => {
+        if (!containerRef.current) return;
+
+        const width = containerRef.current.clientWidth;
+
+        containerRef.current.scrollTo({
+            left: width * index,
             behavior: "smooth",
         });
+
         setCurrent(index);
     }, []);
 
-    // 2. Fixed Interval: It now actually triggers the scroll AND resets on user interaction
-    useEffect(() => {
-        const timer = setInterval(() => {
-            scrollToSlide((current + 1) % campaigns.length);
-        }, 4000);
+    const scrollToStores = useCallback(() => {
+        const storesSection = document.getElementById("popular-stores");
 
-        // By adding 'current' to the dependency array, this timer resets 
-        // every time the user manually clicks a button or swipes!
-        return () => clearInterval(timer);
-    }, [current, campaigns.length, scrollToSlide]);
-
-    // 3. Optimized scroll listener to prevent unnecessary re-renders
-    function handleScroll() {
-        const track = trackRef.current;
-        if (!track) return;
-
-        const nextIndex = Math.round(track.scrollLeft / track.clientWidth);
-        if (nextIndex !== current) {
-            setCurrent(nextIndex);
+        if (!storesSection) {
+            return;
         }
-    }
+
+        storesSection.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, []);
+
+    useEffect(() => {
+        const interval = setInterval(() => {
+            const next = (current + 1) % promos.length;
+            scrollToSlide(next);
+        }, 5000);
+
+        return () => clearInterval(interval);
+    }, [current, promos.length, scrollToSlide]);
 
     return (
-        <div className="relative mb-10 overflow-hidden rounded-2xl shadow-lg group">
+        <div className="relative w-full overflow-hidden rounded-3xl border border-white/70 bg-white/80 shadow-[0_24px_90px_rgba(249,115,22,0.12)] backdrop-blur">
+            {/* Slides */}
             <div
-                ref={trackRef}
-                onScroll={handleScroll}
+                ref={containerRef}
                 className="flex snap-x snap-mandatory overflow-x-auto scroll-smooth [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
             >
-                {campaigns.map((camp) => (
+                {promos.map((promo) => (
                     <div
-                        key={camp.id}
-                        className={`relative min-h-[280px] w-full flex-none snap-center bg-gradient-to-r ${camp.bg} md:min-h-[320px]`}
+                        key={promo.id}
+                        className={`relative h-[280px] min-w-full overflow-hidden bg-gradient-to-r ${getPromoBackground(promo.id - 1)} md:h-[360px]`}
                     >
-                        <div className="absolute inset-0 bg-black/10" />
-                        <div className="relative flex h-full flex-col justify-center p-8 text-white md:p-12">
-                            <span className="mb-2 w-max rounded-full bg-white/20 px-3 py-1 text-xs font-bold uppercase tracking-wider backdrop-blur-sm">
-                                {camp.tag}
+                        <div className="absolute inset-0 bg-black/15" />
+
+                        {/* Content */}
+                        <div className="relative z-10 flex h-full flex-col justify-center px-6 py-8 md:px-10">
+                            <span className="mb-3 w-fit rounded-full bg-white/20 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-white backdrop-blur-md">
+                                Featured for you
                             </span>
-                            <h1 className="mb-3 text-3xl font-extrabold md:text-5xl">
-                                {camp.title}
+
+                            <h1 className="max-w-xl text-3xl font-black text-white md:text-5xl">
+                                {promo.title}
                             </h1>
-                            <p className="mb-6 max-w-lg text-lg text-white/90 md:text-xl">
-                                {camp.desc}
+
+                            <p className="mt-3 max-w-md text-sm leading-6 text-white/85 md:text-lg">
+                                {promo.subtitle}
                             </p>
-                            <button className={`w-max rounded-xl bg-white px-6 py-3 font-bold shadow-md transition hover:bg-gray-50 ${camp.btnText} active:scale-95`}>
-                                Order Now &rarr;
-                            </button>
+
+                            <div className="mt-6 flex flex-wrap gap-3">
+                                {promo.storeId ? (
+                                    <Link
+                                        href={`/store/${promo.storeId}`}
+                                        className="w-fit rounded-full bg-white px-6 py-3 text-sm font-semibold text-gray-950 shadow-lg shadow-black/10 transition hover:scale-105 hover:bg-white/95 active:scale-95"
+                                    >
+                                        {promo.ctaLabel}
+                                    </Link>
+                                ) : (
+                                    <button
+                                        type="button"
+                                        onClick={scrollToStores}
+                                        className="w-fit rounded-full bg-white px-6 py-3 text-sm font-semibold text-gray-950 shadow-lg shadow-black/10 transition hover:scale-105 hover:bg-white/95 active:scale-95"
+                                    >
+                                        {promo.ctaLabel}
+                                    </button>
+                                )}
+
+                                <button
+                                    type="button"
+                                    onClick={scrollToStores}
+                                    className="w-fit rounded-full border border-white/35 bg-white/10 px-6 py-3 text-sm font-semibold text-white backdrop-blur-md transition hover:bg-white/20 active:scale-95"
+                                >
+                                    Browse all stores
+                                </button>
+                            </div>
                         </div>
                     </div>
                 ))}
             </div>
-
-            {/* Left Button - Hidden on mobile, shows on hover on desktop */}
-            <button
-                type="button"
-                onClick={() => scrollToSlide((current - 1 + campaigns.length) % campaigns.length)}
-                className="absolute left-4 top-1/2 z-20 -translate-y-1/2 rounded-full bg-white/90 px-4 py-3 text-lg font-bold text-gray-900 shadow-md backdrop-blur hover:bg-white active:scale-90 transition-all duration-200 opacity-0 md:group-hover:opacity-100"
-                aria-label="Previous slide"
-            >
-                ←
-            </button>
-
-            {/* Right Button - Hidden on mobile, shows on hover on desktop */}
-            <button
-                type="button"
-                onClick={() => scrollToSlide((current + 1) % campaigns.length)}
-                className="absolute right-4 top-1/2 z-20 -translate-y-1/2 rounded-full bg-white/90 px-4 py-3 text-lg font-bold text-gray-900 shadow-md backdrop-blur hover:bg-white active:scale-90 transition-all duration-200 opacity-0 md:group-hover:opacity-100"
-                aria-label="Next slide"
-            >
-                →
-            </button>
-
-            {/* Pagination Dots */}
-            <div className="absolute bottom-6 left-1/2 z-20 flex -translate-x-1/2 gap-2">
-                {campaigns.map((_, idx) => (
+            {/* Dots */}
+            <div className="absolute bottom-4 left-1/2 z-20 flex -translate-x-1/2 items-center gap-2">
+                {promos.map((_, idx) => (
                     <button
                         key={idx}
+                        type="button"
                         onClick={() => scrollToSlide(idx)}
-                        className={`h-2 rounded-full transition-all duration-300 ${idx === current ? "w-8 bg-white" : "w-2 bg-white/50 hover:bg-white/80"
+                        className={`h-2 rounded-full transition-all duration-300 ${idx === current
+                            ? "w-7 bg-white"
+                            : "w-2 bg-white/50 hover:bg-white/80"
                             }`}
                         aria-label={`Go to slide ${idx + 1}`}
                     />

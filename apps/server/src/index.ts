@@ -1,7 +1,19 @@
+import dotenv from "dotenv";
+import path from "path";
 import express from "express";
 import cors from "cors";
+
+// Load workspace .env (workspace root) first, fallback to default lookup
+const envPath = path.resolve(__dirname, "../../../.env");
+dotenv.config({ path: envPath });
+dotenv.config();
+
 import { prisma } from "./lib/prisma";
+
 import authRoutes from "./routes/auth";
+import ownerRoutes from "./routes/owner";
+import cartRoutes from "./routes/cart";
+
 import {
     requireAuth,
     requireRole,
@@ -11,9 +23,24 @@ const app = express();
 
 app.use(cors());
 app.use(express.json());
-app.use("/auth", authRoutes);
 
-function mapStore(store: { id: string; name: string; hostel: string; roomNumber: string }) {
+app.use("/auth", authRoutes);
+app.use("/owner", ownerRoutes);
+app.use("/cart", cartRoutes);
+app.get("/", (req, res) => {
+    res.json({
+        message: "Munchies API running",
+    });
+});
+
+
+
+function mapStore(store: {
+    id: string;
+    name: string;
+    hostel: string;
+    roomNumber: string;
+}) {
     return {
         id: store.id,
         name: store.name,
@@ -23,7 +50,12 @@ function mapStore(store: { id: string; name: string; hostel: string; roomNumber:
     };
 }
 
-function mapItem(item: { id: string; storeId: string; name: string; price: number }) {
+function mapItem(item: {
+    id: string;
+    storeId: string;
+    name: string;
+    price: number;
+}) {
     return {
         id: item.id,
         storeId: item.storeId,
@@ -33,40 +65,69 @@ function mapItem(item: { id: string; storeId: string; name: string; price: numbe
 }
 
 app.get("/stores", async (req, res) => {
-    const stores = await prisma.store.findMany({
-        orderBy: {
-            name: "asc",
-        },
-    });
+    try {
+        const stores = await prisma.store.findMany({
+            orderBy: {
+                name: "asc",
+            },
+        });
 
-    res.json(stores.map(mapStore));
+        res.json(stores.map(mapStore));
+    } catch (error) {
+        console.error(error);
+
+        res.status(500).json({
+            error: "Failed to fetch stores",
+        });
+    }
 });
 
+
+
+// GET SINGLE STORE
 app.get("/stores/:id", async (req, res) => {
-    const store = await prisma.store.findUnique({
-        where: {
-            id: req.params.id,
-        },
-    });
+    try {
+        const store = await prisma.store.findUnique({
+            where: {
+                id: req.params.id,
+            },
+        });
 
-    if (!store) {
-        return res.status(404).json({ message: "Store not found" });
+        if (!store) {
+            return res.status(404).json({
+                error: "Store not found",
+            });
+        }
+
+        res.json(mapStore(store));
+    } catch (error) {
+        console.error(error);
+
+        res.status(500).json({
+            error: "Failed to fetch store",
+        });
     }
-
-    res.json(mapStore(store));
 });
 
 app.get("/stores/:id/items", async (req, res) => {
-    const storeItems = await prisma.item.findMany({
-        where: {
-            storeId: req.params.id,
-        },
-        orderBy: {
-            name: "asc",
-        },
-    });
+    try {
+        const storeItems = await prisma.item.findMany({
+            where: {
+                storeId: req.params.id,
+            },
+            orderBy: {
+                name: "asc",
+            },
+        });
 
-    res.json(storeItems.map(mapItem));
+        res.json(storeItems.map(mapItem));
+    } catch (error) {
+        console.error(error);
+
+        res.status(500).json({
+            error: "Failed to fetch items",
+        });
+    }
 });
 
 app.get(
@@ -74,8 +135,7 @@ app.get(
     requireAuth,
     (req, res) => {
         res.json({
-            message:
-                "You are authenticated",
+            message: "You are authenticated",
         });
     }
 );

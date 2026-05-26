@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "Munchies.",
-  description: "Cravings gone on a click",
+  description: "Campus cravings, handled in a few taps.",
 };
 
 export default function RootLayout({
@@ -27,7 +27,9 @@ export default function RootLayout({
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col vsc-initialized">{children}</body>
+      <body className="min-h-full flex flex-col bg-[radial-gradient(circle_at_top,_rgba(249,115,22,0.12),_transparent_34%),linear-gradient(180deg,_#fffaf5_0%,_#fff_28%,_#fff7ed_100%)] text-gray-900 vsc-initialized">
+        {children}
+      </body>
     </html>
   );
 }
