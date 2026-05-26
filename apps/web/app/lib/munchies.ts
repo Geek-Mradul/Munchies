@@ -7,7 +7,7 @@ export type Store = {
 };
 
 export type StoreItem = {
-    id: number;
+    id: string;
     storeId: string;
     name: string;
     price: number;
@@ -16,7 +16,7 @@ export type StoreItem = {
 export type AddableItem = Pick<StoreItem, "id" | "name" | "price">;
 
 export type CartItem = {
-    id: number;
+    id: string;
     name: string;
     price: number;
     quantity: number;

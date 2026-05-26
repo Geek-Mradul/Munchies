@@ -1,0 +1,108 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  USER
+  STORE_OWNER
+  ADMIN
+}
+
+model User {
+  id           String @id @default(uuid())
+  email        String @unique
+  passwordHash String
+  firstName    String
+  role         Role   @default(USER)
+
+  stores             Store[]
+  carts              Cart[]
+  bookings           Booking[]
+  storeOwnerRequests StoreOwnerRequest[]
+}
+
+model Store {
+  id         String @id @default(uuid())
+  ownerId    String
+  name       String
+  hostel     String
+  roomNumber String
+
+  owner    User      @relation(fields: [ownerId], references: [id])
+  items    Item[]
+  carts    Cart[]
+  bookings Booking[]
+}
+
+model Item {
+  id            String @id @default(uuid())
+  storeId       String
+  name          String
+  price         Float
+  imageUrl      String
+  stockQuantity Int
+
+  store        Store         @relation(fields: [storeId], references: [id])
+  cartItems    CartItem[]
+  bookingItems BookingItem[]
+}
+
+model Cart {
+  id      String @id @default(uuid())
+  userId  String
+  storeId String
+
+  user  User       @relation(fields: [userId], references: [id])
+  store Store      @relation(fields: [storeId], references: [id])
+  items CartItem[]
+
+  @@unique([userId, storeId])
+}
+
+model CartItem {
+  id       String @id @default(uuid())
+  cartId   String
+  itemId   String
+  quantity Int
+
+  cart Cart @relation(fields: [cartId], references: [id])
+  item Item @relation(fields: [itemId], references: [id])
+
+  @@unique([cartId, itemId])
+}
+
+model Booking {
+  id          String @id @default(uuid())
+  userId      String
+  storeId     String
+  totalAmount Float
+  status      String
+
+  user  User          @relation(fields: [userId], references: [id])
+  store Store         @relation(fields: [storeId], references: [id])
+  items BookingItem[]
+}
+
+model BookingItem {
+  id        String @id @default(uuid())
+  bookingId String
+  itemId    String
+  quantity  Int
+  unitPrice Float
+
+  booking Booking @relation(fields: [bookingId], references: [id])
+  item    Item    @relation(fields: [itemId], references: [id])
+}
+
+model StoreOwnerRequest {
+  id     String @id @default(uuid())
+  userId String
+  status String @default("PENDING")
+
+  user User @relation(fields: [userId], references: [id])
+}

@@ -2,7 +2,7 @@ import type { CartItem as CartLineItem } from "../lib/munchies";
 
 type Props = {
     item: CartLineItem;
-    onRemove: (id: number) => void;
+    onRemove: (id: string) => void;
     onAdd?: () => void;
 };
 

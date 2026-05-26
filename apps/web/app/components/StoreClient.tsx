@@ -29,7 +29,7 @@ export default function StoreClient({ store, items }: Props) {
         });
     }
 
-    function removeFromCart(id: number) {
+    function removeFromCart(id: string) {
         setCart((prev) =>
             prev
                 .map((item) =>
@@ -46,7 +46,7 @@ export default function StoreClient({ store, items }: Props) {
         0
     );
 
-    const cartQuantities = cart.reduce<Record<number, number>>((counts, item) => {
+    const cartQuantities = cart.reduce<Record<string, number>>((counts, item) => {
         counts[item.id] = item.quantity;
         return counts;
     }, {});

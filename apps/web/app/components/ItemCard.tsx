@@ -4,7 +4,7 @@ type Props = {
     item: StoreItem;
     quantityInCart?: number;
     onAddToCart: (item: StoreItem) => void;
-    onDecrease: (id: number) => void;
+    onDecrease: (id: string) => void;
 };
 
 export default function ItemCard({
