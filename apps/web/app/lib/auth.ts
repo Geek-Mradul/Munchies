@@ -1,7 +1,5 @@
-export function getToken() {
-    if (typeof window === "undefined") {
-        return null;
-    }
+import { getAuthToken } from "./api";
 
-    return localStorage.getItem("munchies_token");
+export function getToken() {
+    return getAuthToken();
 }

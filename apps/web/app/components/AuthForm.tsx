@@ -3,6 +3,7 @@
 import { FormEvent, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { apiFetch } from "../lib/api";
 
 type AuthMode = "login" | "register";
 
@@ -25,9 +26,6 @@ type AuthResponse =
         error?: string;
     };
 
-const API_BASE_URL =
-    process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
-
 export default function AuthForm({ mode }: AuthFormProps) {
     const router = useRouter();
     const isLogin = mode === "login";
@@ -49,21 +47,16 @@ export default function AuthForm({ mode }: AuthFormProps) {
         };
 
         try {
-            const response = await fetch(
-                `${API_BASE_URL}/auth/${isLogin ? "login" : "register"}`,
+            const response = await apiFetch(
+                `/auth/${isLogin ? "login" : "register"}`,
                 {
                     method: "POST",
-                    headers: {
-                        "Content-Type": "application/json",
-                    },
-                    body: JSON.stringify(
-                        isLogin
-                            ? {
-                                email: payload.email,
-                                password: payload.password,
-                            }
-                            : payload
-                    ),
+                    body: isLogin
+                        ? {
+                            email: payload.email,
+                            password: payload.password,
+                        }
+                        : payload,
                 }
             );
 

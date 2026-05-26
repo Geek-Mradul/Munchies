@@ -5,6 +5,66 @@ import { requireAuth, requireRole, AuthRequest } from "../middleware/auth";
 const router = Router();
 
 router.get(
+    "/bookings",
+    requireAuth,
+    requireRole("STORE_OWNER"),
+    async (req: AuthRequest, res: Response) => {
+        try {
+            const stores = await prisma.store.findMany({
+                where: {
+                    ownerId: req.user!.userId,
+                },
+                select: {
+                    id: true,
+                },
+            });
+
+            const ownedStoreIds = stores.map((store) => store.id);
+
+            if (ownedStoreIds.length === 0) {
+                return res.json([]);
+            }
+
+            const bookings = (await prisma.booking.findMany({
+                where: {
+                    storeId: {
+                        in: ownedStoreIds,
+                    },
+                },
+                include: {
+                    user: {
+                        select: {
+                            id: true,
+                            firstName: true,
+                            email: true,
+                        },
+                    },
+                    store: true,
+                    items: {
+                        include: {
+                            item: true,
+                        },
+                    },
+                },
+            }) as unknown) as Array<{ createdAt: Date }>;
+
+            bookings.sort(
+                (left, right) =>
+                    right.createdAt.getTime() - left.createdAt.getTime()
+            );
+
+            res.json(bookings);
+        } catch (error) {
+            console.error(error);
+
+            res.status(500).json({
+                error: "Failed to fetch owner bookings",
+            });
+        }
+    }
+);
+
+router.get(
     "/items",
     requireAuth,
     requireRole("STORE_OWNER"),

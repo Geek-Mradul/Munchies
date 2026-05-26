@@ -6,19 +6,17 @@ import ItemCard from "./ItemCard";
 import CartItem from "./CartItem";
 import type { AddableItem, CartItem as CartLineItem, Store, StoreItem } from "../lib/munchies";
 import { getToken } from "../lib/auth";
+import { apiFetch } from "../lib/api";
 
 type Props = {
     store: Store;
     items: StoreItem[];
 };
 
-const API_BASE_URL =
-    process.env.NEXT_PUBLIC_API_URL ??
-    "http://localhost:4000";
-
 export default function StoreClient({ store, items }: Props) {
     const router = useRouter();
     const [cart, setCart] = useState<CartLineItem[]>([]);
+    const [checkoutLoading, setCheckoutLoading] = useState(false);
 
     function requireAuthForCartAction() {
         const token = getToken();
@@ -40,15 +38,10 @@ export default function StoreClient({ store, items }: Props) {
                     return;
                 }
 
-                const response = await fetch(
-                    `${API_BASE_URL}/cart/${store.id}`,
-                    {
-                        headers: {
-                            Authorization: `Bearer ${token}`,
-                        },
-                        cache: "no-store",
-                    }
-                );
+                const response = await apiFetch(`/cart/${store.id}`, {
+                    includeAuth: true,
+                    cache: "no-store",
+                });
 
                 if (!response.ok) {
                     return;
@@ -107,16 +100,13 @@ export default function StoreClient({ store, items }: Props) {
         });
 
         try {
-            await fetch(`${API_BASE_URL}/cart/${store.id}/add`, {
+            await apiFetch(`/cart/${store.id}/add`, {
                 method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                    Authorization: `Bearer ${token}`,
-                },
-                body: JSON.stringify({
+                includeAuth: true,
+                body: {
                     itemId: item.id,
                     quantity: 1,
-                }),
+                },
             });
         } catch (error) {
             console.error(error);
@@ -147,14 +137,9 @@ export default function StoreClient({ store, items }: Props) {
         );
 
         try {
-            const cartResponse = await fetch(
-                `${API_BASE_URL}/cart/${store.id}`,
-                {
-                    headers: {
-                        Authorization: `Bearer ${token}`,
-                    },
-                }
-            );
+            const cartResponse = await apiFetch(`/cart/${store.id}`, {
+                includeAuth: true,
+            });
 
             const cartData = await cartResponse.json();
 
@@ -167,28 +152,62 @@ export default function StoreClient({ store, items }: Props) {
             }
 
             if (existingItem.quantity === 1) {
-                await fetch(`${API_BASE_URL}/cart/item/${cartItem.id}`, {
+                await apiFetch(`/cart/item/${cartItem.id}`, {
                     method: "DELETE",
-                    headers: {
-                        Authorization: `Bearer ${token}`,
-                    },
+                    includeAuth: true,
                 });
 
                 return;
             }
 
-            await fetch(`${API_BASE_URL}/cart/item/${cartItem.id}`, {
+            await apiFetch(`/cart/item/${cartItem.id}`, {
                 method: "PUT",
-                headers: {
-                    "Content-Type": "application/json",
-                    Authorization: `Bearer ${token}`,
-                },
-                body: JSON.stringify({
+                includeAuth: true,
+                body: {
                     quantity: existingItem.quantity - 1,
-                }),
+                },
             });
         } catch (error) {
             console.error(error);
+        }
+    }
+
+    async function placeBooking() {
+        try {
+            setCheckoutLoading(true);
+
+            const token = getToken();
+
+            if (!token) {
+                alert("Please login first");
+                return;
+            }
+
+            const response = await apiFetch(`/checkout/${store.id}`, {
+                method: "POST",
+                includeAuth: true,
+            });
+
+            const data = await response.json();
+
+            if (!response.ok) {
+                throw new Error(data.error || "Checkout failed");
+            }
+
+            // Clear cart in UI so the checkout state updates immediately.
+            setCart([]);
+
+            alert("Booking placed successfully");
+        } catch (error) {
+            console.error(error);
+
+            alert(
+                error instanceof Error
+                    ? error.message
+                    : "Checkout failed"
+            );
+        } finally {
+            setCheckoutLoading(false);
         }
     }
 
@@ -330,17 +349,13 @@ export default function StoreClient({ store, items }: Props) {
 
                             <button
                                 type="button"
-                                onClick={() => {
-                                    const token = getToken();
-
-                                    if (!token) {
-                                        router.push("/login");
-                                        return;
-                                    }
-                                }}
-                                className="w-full rounded-full bg-gradient-to-r from-orange-500 to-rose-500 py-4 text-lg font-bold text-white shadow-lg shadow-orange-200 transition hover:brightness-105 active:scale-95"
+                                onClick={placeBooking}
+                                disabled={checkoutLoading}
+                                className="w-full rounded-xl bg-orange-600 py-4 text-lg font-bold text-white shadow-lg shadow-orange-200 transition hover:bg-orange-700 active:scale-95 disabled:cursor-not-allowed disabled:opacity-70"
                             >
-                                Place order
+                                {checkoutLoading
+                                    ? "Placing Booking..."
+                                    : "Place Booking"}
                             </button>
                         </>
                     )}
@@ -358,19 +373,13 @@ export default function StoreClient({ store, items }: Props) {
 
                         <button
                             type="button"
-                            onClick={() => {
-                                const token = getToken();
-
-                                if (!token) {
-                                    router.push("/login");
-                                    return;
-                                }
-
-                                // On mobile, keep same behaviour as desktop Place order button
-                            }}
-                            className="rounded-full bg-gradient-to-r from-orange-500 to-rose-500 px-5 py-3 text-sm font-bold text-white shadow-lg"
+                            onClick={placeBooking}
+                            disabled={checkoutLoading}
+                            className="rounded-xl bg-orange-600 px-5 py-3 text-sm font-bold text-white shadow-lg transition hover:bg-orange-700 disabled:cursor-not-allowed disabled:opacity-70"
                         >
-                            Place order
+                            {checkoutLoading
+                                ? "Placing Booking..."
+                                : "Place Booking"}
                         </button>
                     </div>
                 </div>

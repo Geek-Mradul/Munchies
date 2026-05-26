@@ -1,3 +1,5 @@
+import { apiFetch, apiFetchJson } from "./api";
+
 export type Store = {
     id: string;
     name: string;
@@ -22,22 +24,14 @@ export type CartItem = {
     quantity: number;
 };
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
-
 async function requestJson<T>(path: string): Promise<T> {
-    const response = await fetch(`${API_BASE_URL}${path}`, {
+    return apiFetchJson<T>(path, {
         cache: "no-store",
     });
-
-    if (!response.ok) {
-        throw new Error(`Request failed for ${path}`);
-    }
-
-    return response.json() as Promise<T>;
 }
 
 async function requestJsonOrNull<T>(path: string): Promise<T | null> {
-    const response = await fetch(`${API_BASE_URL}${path}`, {
+    const response = await apiFetch(path, {
         cache: "no-store",
     });
 

@@ -13,6 +13,10 @@ import { prisma } from "./lib/prisma";
 import authRoutes from "./routes/auth";
 import ownerRoutes from "./routes/owner";
 import cartRoutes from "./routes/cart";
+import checkoutRoutes from "./routes/checkout";
+import bookingsRoutes from "./routes/bookings";
+import storeOwnerRequestRoutes from "./routes/storeOwnerRequest";
+import adminRoutes from "./routes/admin";
 
 import {
     requireAuth,
@@ -27,6 +31,10 @@ app.use(express.json());
 app.use("/auth", authRoutes);
 app.use("/owner", ownerRoutes);
 app.use("/cart", cartRoutes);
+app.use("/checkout", checkoutRoutes);
+app.use("/bookings", bookingsRoutes);
+app.use("/store-owner-request", storeOwnerRequestRoutes);
+app.use("/admin", adminRoutes);
 app.get("/", (req, res) => {
     res.json({
         message: "Munchies API running",
