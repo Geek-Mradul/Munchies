@@ -28,10 +28,10 @@ function StoreLoadError() {
         <main className="flex min-h-screen flex-col items-center justify-center bg-[radial-gradient(circle_at_top,_rgba(249,115,22,0.12),_transparent_34%),linear-gradient(180deg,_#fffaf5_0%,_#fff_32%,_#fff7ed_100%)] p-6 font-sans text-gray-900 antialiased">
             <div className="w-full max-w-md rounded-[2rem] border border-red-100 bg-white/90 p-8 text-center shadow-[0_24px_90px_rgba(249,115,22,0.08)]">
                 <h1 className="mb-2 text-xl font-black text-red-800">
-                    We couldn’t load this page.
+                    We couldn't load this page.
                 </h1>
                 <p className="mb-8 text-sm text-gray-600">
-                    The store details didn’t arrive from the server. Please try again shortly.
+                    The store details didn't arrive from the server. Please try again shortly.
                 </p>
                 <Link
                     href="/"
@@ -77,8 +77,8 @@ export default async function StorePage({ params }: Props) {
     }
 
     return (
-        <main className="min-h-screen px-4 py-6 font-sans text-gray-900 antialiased sm:px-6 lg:px-8">
-            <div className="mx-auto max-w-7xl">
+        <main className="min-h-screen px-4 py-6 font-sans text-gray-900 antialiased sm:px-8 lg:px-12">
+            <div className="mx-auto max-w-[1600px]">
                 <div className="mb-6">
                     <Link
                         href="/"

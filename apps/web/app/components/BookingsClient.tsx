@@ -84,13 +84,22 @@ export default function BookingsClient() {
                             <p className="text-sm text-gray-600">
                                 {booking.store.hostel}, Room {booking.store.roomNumber}
                             </p>
-                            <p className="mt-1 text-xs text-gray-500">Booking ID: {booking.id}</p>
+                            <p className="mt-1 text-xs text-gray-500 font-medium">Order Number: {booking.orderNumber || booking.id.slice(0, 8).toUpperCase()}</p>
                         </div>
 
                         <div className="text-right">
-                            <p className="rounded-full bg-orange-100 px-3 py-1 text-xs font-bold text-orange-700 inline-block">
-                                {booking.status}
-                            </p>
+                            <span className={`inline-block rounded-full px-3 py-1 text-xs font-bold ${booking.status === "PLACED" ? "bg-amber-50 text-amber-700 border border-amber-100"
+                                    : booking.status === "ACCEPTED" ? "bg-sky-50 text-sky-700 border border-sky-100"
+                                        : booking.status === "READY" ? "bg-emerald-50 text-emerald-700 border border-emerald-100 animate-pulse"
+                                            : booking.status === "REJECTED" ? "bg-rose-50 text-rose-700 border border-rose-100"
+                                                : "bg-gray-150 text-gray-700"
+                                }`}>
+                                {booking.status === "PLACED" ? "Preparing / Pending"
+                                    : booking.status === "ACCEPTED" ? "Preparing..."
+                                        : booking.status === "READY" ? "Ready"
+                                            : booking.status === "REJECTED" ? "Cancelled"
+                                                : "Completed"}
+                            </span>
                             <p className="mt-2 text-sm font-bold text-gray-900">₹{booking.totalAmount.toFixed(2)}</p>
                         </div>
                     </div>

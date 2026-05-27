@@ -13,9 +13,11 @@ export type StoreItem = {
     storeId: string;
     name: string;
     price: number;
+    imageUrl: string;
+    stockQuantity: number;
 };
 
-export type AddableItem = Pick<StoreItem, "id" | "name" | "price">;
+export const MAX_CART_ITEMS = 7;
 
 export type CartItem = {
     id: string;

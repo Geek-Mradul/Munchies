@@ -9,6 +9,11 @@ import {
 } from "../middleware/auth";
 
 const router = Router();
+const MAX_CART_ITEMS = 7;
+
+function getCartItemCount(items: Array<{ quantity: number }>) {
+    return items.reduce((sum, cartItem) => sum + cartItem.quantity, 0);
+}
 
 
 
@@ -59,6 +64,28 @@ router.post(
                 });
             }
 
+            const totalItems = getCartItemCount(cart.items);
+
+            if (totalItems > MAX_CART_ITEMS) {
+                return res.status(400).json({
+                    error: "A cart can contain at most 7 items",
+                });
+            }
+
+            for (const cartItem of cart.items) {
+                if (cartItem.quantity <= 0) {
+                    return res.status(400).json({
+                        error: `Invalid quantity for ${cartItem.item.name}`,
+                    });
+                }
+
+                if (cartItem.quantity > cartItem.item.stockQuantity) {
+                    return res.status(400).json({
+                        error: `${cartItem.item.name} does not have enough stock`,
+                    });
+                }
+            }
+
             // calculate total
             const totalAmount =
                 cart.items.reduce(
@@ -69,10 +96,29 @@ router.post(
                     0
                 );
 
+            // Generate sequential order number A01 → A99 → B01 → ... → Z99
+            const lastBooking = await prisma.booking.findFirst({
+                orderBy: { createdAt: "desc" },
+                select: { orderNumber: true },
+            });
+
+            let orderNumber = "A01";
+            if (lastBooking?.orderNumber) {
+                const letter = lastBooking.orderNumber.charAt(0);
+                const num = parseInt(lastBooking.orderNumber.slice(1), 10);
+                if (num < 99) {
+                    orderNumber = `${letter}${String(num + 1).padStart(2, "0")}`;
+                } else {
+                    const nextLetter = String.fromCharCode(letter.charCodeAt(0) + 1);
+                    orderNumber = nextLetter <= "Z" ? `${nextLetter}01` : "A01";
+                }
+            }
+
             // create booking
             const booking =
                 await prisma.booking.create({
                     data: {
+                        orderNumber,
                         userId:
                             req.user!.userId,
                         storeId:

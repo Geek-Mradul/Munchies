@@ -1,5 +1,7 @@
 import { apiFetch } from "./api";
 
+export type BookingStatus = "PLACED" | "ACCEPTED" | "READY" | "REJECTED" | "COMPLETED";
+
 type BookingItem = {
     id: string;
     quantity: number;
@@ -12,7 +14,8 @@ type BookingItem = {
 
 export type CustomerBooking = {
     id: string;
-    status: string;
+    orderNumber?: string;
+    status: BookingStatus;
     totalAmount: number;
     store: {
         id: string;
@@ -25,7 +28,8 @@ export type CustomerBooking = {
 
 export type OwnerBooking = {
     id: string;
-    status: string;
+    orderNumber?: string;
+    status: BookingStatus;
     totalAmount: number;
     store: {
         id: string;

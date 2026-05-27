@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useState, useSyncExternalStore } from "react";
-import { submitStoreOwnerRequest } from "../lib/storeOwnerRequests";
+import { useSyncExternalStore, useState, useRef, useEffect } from "react";
+import { getDashboardPathForRole } from "../lib/auth";
 
 type StoredUser = {
     id: string;
@@ -39,8 +39,14 @@ function parseUser(snapshot: string): StoredUser | null {
     }
 }
 
-export default function AuthStatusNav() {
-    const [requestLoading, setRequestLoading] = useState(false);
+type AuthStatusNavProps = {
+    minimal?: boolean;
+};
+
+export default function AuthStatusNav({ minimal }: AuthStatusNavProps) {
+    const [isOpen, setIsOpen] = useState(false);
+    const dropdownRef = useRef<HTMLDivElement>(null);
+
     const snapshot = useSyncExternalStore(
         (onStoreChange) => {
             window.addEventListener("storage", onStoreChange);
@@ -56,26 +62,20 @@ export default function AuthStatusNav() {
     );
     const user = parseUser(snapshot);
 
+    useEffect(() => {
+        function handleOutsideClick(event: MouseEvent) {
+            if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+                setIsOpen(false);
+            }
+        }
+        document.addEventListener("mousedown", handleOutsideClick);
+        return () => document.removeEventListener("mousedown", handleOutsideClick);
+    }, []);
+
     function handleLogout() {
         localStorage.removeItem("munchies_token");
         localStorage.removeItem("munchies_user");
         window.dispatchEvent(new Event("munchies-auth-change"));
-    }
-
-    async function handleBecomeOwner() {
-        try {
-            setRequestLoading(true);
-            const response = await submitStoreOwnerRequest();
-            alert(response.message || "Request submitted successfully");
-        } catch (error) {
-            alert(
-                error instanceof Error
-                    ? error.message
-                    : "Failed to submit request"
-            );
-        } finally {
-            setRequestLoading(false);
-        }
     }
 
     if (!user) {
@@ -97,60 +97,84 @@ export default function AuthStatusNav() {
         );
     }
 
-    return (
-        <div className="flex items-center gap-3">
-            <Link
-                href="/bookings"
-                className="hidden rounded-full px-4 py-2 text-sm font-semibold text-gray-700 transition hover:bg-orange-50 hover:text-orange-700 md:inline-flex"
-            >
-                My bookings
-            </Link>
+    if (minimal) {
+        return (
+            <div className="flex items-center justify-between gap-3 w-full border-t border-orange-100/60 pt-4 mt-2">
+                <div className="flex items-center gap-2 min-w-0">
+                    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-orange-500 to-rose-500 text-xs font-black text-white shadow-sm shrink-0">
+                        {user.firstName?.[0]?.toUpperCase() ?? "U"}
+                    </div>
+                    <p className="font-bold text-gray-900 text-sm truncate">{user.firstName || "Account"}</p>
+                </div>
 
-            {user.role === "STORE_OWNER" && (
-                <Link
-                    href="/owner/bookings"
-                    className="hidden rounded-full px-4 py-2 text-sm font-semibold text-gray-700 transition hover:bg-orange-50 hover:text-orange-700 lg:inline-flex"
-                >
-                    Owner orders
-                </Link>
-            )}
-
-            {user.role === "ADMIN" && (
-                <Link
-                    href="/admin/store-owner-requests"
-                    className="hidden rounded-full px-4 py-2 text-sm font-semibold text-gray-700 transition hover:bg-orange-50 hover:text-orange-700 lg:inline-flex"
-                >
-                    Owner requests
-                </Link>
-            )}
-
-            {user.role === "USER" && (
                 <button
                     type="button"
-                    onClick={handleBecomeOwner}
-                    disabled={requestLoading}
-                    className="hidden rounded-full bg-orange-100 px-4 py-2 text-sm font-semibold text-orange-700 transition hover:bg-orange-200 disabled:cursor-not-allowed disabled:opacity-70 lg:inline-flex"
+                    onClick={handleLogout}
+                    className="rounded-xl bg-gray-950 px-3 py-2 text-xs font-bold text-white hover:bg-gray-800 transition active:scale-95 shrink-0"
                 >
-                    {requestLoading
-                        ? "Submitting..."
-                        : "Become Store Owner"}
+                    Logout
                 </button>
-            )}
-
-            <div className="hidden items-center gap-3 rounded-full border border-orange-100 bg-orange-50 px-4 py-2 text-sm text-gray-700 sm:flex">
-                <div className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-orange-500 to-rose-500 text-sm font-black text-white shadow-sm">
-                    {user.firstName?.[0]?.toUpperCase() ?? "U"}
-                </div>
-                <p className="font-semibold text-gray-900">{user.firstName || "Account"}</p>
             </div>
+        );
+    }
 
+    return (
+        <div className="relative" ref={dropdownRef}>
+            {/* Clickable Profile Badge */}
             <button
                 type="button"
-                onClick={handleLogout}
-                className="rounded-full bg-gray-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-gray-800"
+                onClick={() => setIsOpen((prev) => !prev)}
+                className="flex items-center gap-2 rounded-full border border-orange-100 bg-orange-50/50 hover:bg-orange-50 px-2 py-1.5 sm:px-4 sm:py-2 text-xs sm:text-sm text-gray-700 transition active:scale-95 duration-150 shadow-sm"
             >
-                Logout
+                <div className="flex h-7 w-7 sm:h-8 sm:w-8 items-center justify-center rounded-full bg-gradient-to-br from-orange-500 to-rose-500 text-xs font-black text-white shadow-sm">
+                    {user.firstName?.[0]?.toUpperCase() ?? "U"}
+                </div>
+                <span className="font-bold text-gray-900 pr-1">{user.firstName || "Account"}</span>
+                <span className="text-[10px] text-gray-400">▼</span>
             </button>
+
+            {/* Premium Dropdown Card */}
+            {isOpen && (
+                <div className="absolute right-0 mt-2.5 w-56 rounded-2xl border border-orange-100 bg-white p-2 shadow-xl z-50 animate-fade-in">
+                    <div className="px-3 py-2.5 text-xs text-gray-500 border-b border-gray-50 mb-1">
+                        <p className="font-bold text-gray-900 text-sm truncate">{user.firstName}</p>
+                        <p className="text-gray-400 font-medium truncate">{user.email}</p>
+                    </div>
+
+                    <div className="space-y-0.5">
+                        <Link
+                            href="/bookings"
+                            onClick={() => setIsOpen(false)}
+                            className="flex w-full items-center rounded-xl px-3 py-2 text-xs lg:text-sm font-bold text-gray-700 hover:bg-orange-50 hover:text-orange-700 transition"
+                        >
+                            My Bookings
+                        </Link>
+
+                        {user.role !== "USER" && (
+                            <Link
+                                href={getDashboardPathForRole(user.role as "USER" | "STORE_OWNER" | "ADMIN")}
+                                onClick={() => setIsOpen(false)}
+                                className="flex w-full items-center rounded-xl px-3 py-2 text-xs lg:text-sm font-bold text-gray-700 hover:bg-orange-50 hover:text-orange-700 transition"
+                            >
+                                Dashboard
+                            </Link>
+                        )}
+                    </div>
+
+                    <div className="border-t border-gray-50 mt-1 pt-1">
+                        <button
+                            type="button"
+                            onClick={() => {
+                                handleLogout();
+                                setIsOpen(false);
+                            }}
+                            className="flex w-full items-center rounded-xl px-3 py-2 text-xs lg:text-sm font-bold text-rose-600 hover:bg-rose-50 transition"
+                        >
+                            Logout
+                        </button>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

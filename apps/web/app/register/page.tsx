@@ -1,5 +1,5 @@
 import AuthForm from "../components/AuthForm";
 
-export default function RegisterPage() {
-    return <AuthForm mode="register" />;
+export default function UserRegisterPage() {
+    return <AuthForm mode="register" scope="USER" />;
 }

@@ -31,7 +31,9 @@ export async function apiFetch(path: string, options: ApiFetchOptions = {}) {
 
     const finalHeaders = new Headers(headers);
 
-    if (body !== undefined && !finalHeaders.has("Content-Type")) {
+    const isFormData = typeof FormData !== "undefined" && body instanceof FormData;
+
+    if (body !== undefined && !isFormData && !finalHeaders.has("Content-Type")) {
         finalHeaders.set("Content-Type", "application/json");
     }
 
@@ -46,7 +48,7 @@ export async function apiFetch(path: string, options: ApiFetchOptions = {}) {
     return fetch(`${API_BASE_URL}${path}`, {
         method,
         headers: finalHeaders,
-        body: body === undefined ? undefined : JSON.stringify(body),
+        body: body === undefined ? undefined : isFormData ? body : JSON.stringify(body),
         cache,
     });
 }

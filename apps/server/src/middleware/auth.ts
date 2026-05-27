@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
+import { prisma } from "../lib/prisma";
 
 type JwtPayload = {
     userId: string;
@@ -11,7 +12,7 @@ export interface AuthRequest
     user?: JwtPayload;
 }
 
-export function requireAuth(
+export async function requireAuth(
     req: AuthRequest,
     res: Response,
     next: NextFunction
@@ -33,7 +34,26 @@ export function requireAuth(
             process.env.JWT_SECRET as string
         ) as JwtPayload;
 
-        req.user = decoded;
+        const user = await prisma.user.findUnique({
+            where: {
+                id: decoded.userId,
+            },
+            select: {
+                id: true,
+                role: true,
+            },
+        });
+
+        if (!user) {
+            return res.status(401).json({
+                message: "Unauthorized",
+            });
+        }
+
+        req.user = {
+            userId: user.id,
+            role: user.role,
+        };
 
         next();
     } catch {

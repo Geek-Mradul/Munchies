@@ -4,6 +4,11 @@ import { prisma } from "../lib/prisma";
 import { requireAuth, AuthRequest } from "../middleware/auth";
 
 const router = Router();
+const MAX_CART_ITEMS = 7;
+
+function getCartItemCount(items: Array<{ quantity: number }>) {
+    return items.reduce((sum, item) => sum + item.quantity, 0);
+}
 
 
 
@@ -51,7 +56,37 @@ router.post(
     async (req: AuthRequest, res) => {
         try {
             const storeId = String(req.params.storeId);
-            const { itemId, quantity } = req.body;
+            const itemId = String(req.body?.itemId ?? "");
+            const quantity = Number(req.body?.quantity ?? 0);
+
+            if (!itemId || !Number.isInteger(quantity) || quantity <= 0) {
+                return res.status(400).json({
+                    error: "Valid item and quantity are required",
+                });
+            }
+
+            const item = await prisma.item.findFirst({
+                where: {
+                    id: itemId,
+                    storeId,
+                },
+                select: {
+                    id: true,
+                    stockQuantity: true,
+                },
+            });
+
+            if (!item) {
+                return res.status(404).json({
+                    error: "Item not found",
+                });
+            }
+
+            if (item.stockQuantity <= 0) {
+                return res.status(400).json({
+                    error: "Item is sold out",
+                });
+            }
 
             let cart = await prisma.cart.findUnique({
                 where: {
@@ -59,6 +94,9 @@ router.post(
                         userId: req.user!.userId,
                         storeId,
                     },
+                },
+                include: {
+                    items: true,
                 },
             });
 
@@ -69,18 +107,30 @@ router.post(
                         userId: req.user!.userId,
                         storeId,
                     },
+                    include: {
+                        items: true,
+                    },
                 });
             }
 
-            const existingCartItem =
-                await prisma.cartItem.findUnique({
-                    where: {
-                        cartId_itemId: {
-                            cartId: cart.id,
-                            itemId,
-                        },
-                    },
+            const existingCartItem = cart.items.find(
+                (cartItem) => cartItem.itemId === itemId
+            );
+
+            const currentCartItems = getCartItemCount(cart.items);
+            const nextQuantity = (existingCartItem?.quantity ?? 0) + quantity;
+
+            if (nextQuantity > item.stockQuantity) {
+                return res.status(400).json({
+                    error: "Not enough stock available",
                 });
+            }
+
+            if (currentCartItems + quantity > MAX_CART_ITEMS) {
+                return res.status(400).json({
+                    error: "A cart can contain at most 7 items",
+                });
+            }
 
             // item already in cart
             if (existingCartItem) {
@@ -90,9 +140,7 @@ router.post(
                             id: existingCartItem.id,
                         },
                         data: {
-                            quantity:
-                                existingCartItem.quantity +
-                                quantity,
+                            quantity: nextQuantity,
                         },
                     });
 
@@ -129,7 +177,54 @@ router.put(
     async (req: AuthRequest, res) => {
         try {
             const itemId = String(req.params.id);
-            const { quantity } = req.body;
+            const quantity = Number(req.body?.quantity ?? 0);
+
+            if (!Number.isInteger(quantity) || quantity <= 0) {
+                return res.status(400).json({
+                    error: "Quantity must be a positive whole number",
+                });
+            }
+
+            const cartItem = await prisma.cartItem.findUnique({
+                where: {
+                    id: itemId,
+                },
+                include: {
+                    cart: {
+                        include: {
+                            items: true,
+                        },
+                    },
+                    item: true,
+                },
+            });
+
+            if (!cartItem) {
+                return res.status(404).json({
+                    error: "Cart item not found",
+                });
+            }
+
+            if (cartItem.cart.userId !== req.user!.userId) {
+                return res.status(403).json({
+                    error: "Unauthorized",
+                });
+            }
+
+            if (quantity > cartItem.item.stockQuantity) {
+                return res.status(400).json({
+                    error: "Not enough stock available",
+                });
+            }
+
+            const nextTotalItems =
+                getCartItemCount(cartItem.cart.items) - cartItem.quantity + quantity;
+
+            if (nextTotalItems > MAX_CART_ITEMS) {
+                return res.status(400).json({
+                    error: "A cart can contain at most 7 items",
+                });
+            }
 
             const updated =
                 await prisma.cartItem.update({
