@@ -15,7 +15,152 @@ function getCartItemCount(items: Array<{ quantity: number }>) {
     return items.reduce((sum, cartItem) => sum + cartItem.quantity, 0);
 }
 
+// Helper function to validate coupon details and calculate discount
+async function validateCoupon(
+    couponCode: string,
+    storeId: string,
+    userId: string,
+    cartTotal: number
+): Promise<
+    | { valid: true; discountAmount: number; campaignId: string; couponCode: string }
+    | { valid: false; error: string }
+> {
+    if (!couponCode || typeof couponCode !== "string") {
+        return { valid: false, error: "Invalid coupon code" };
+    }
 
+    const uppercaseCode = couponCode.trim().toUpperCase();
+
+    const campaign = await prisma.saleCampaign.findUnique({
+        where: { code: uppercaseCode },
+    });
+
+    if (!campaign || campaign.storeId !== storeId) {
+        return { valid: false, error: "Coupon is not valid for this store or does not exist" };
+    }
+
+    const now = new Date();
+    if (!campaign.isActive || now < campaign.startDate || now > campaign.endDate) {
+        return { valid: false, error: "Coupon has expired or is not active yet" };
+    }
+
+    if (cartTotal < campaign.minOrderValue) {
+        return {
+            valid: false,
+            error: `Order total must be at least ₹${campaign.minOrderValue.toFixed(2)} to use this coupon`,
+        };
+    }
+
+    if (campaign.globalLimit !== null && campaign.usedCount >= campaign.globalLimit) {
+        return { valid: false, error: "Coupon usage limit has been reached" };
+    }
+
+    if (campaign.perUserLimit !== null) {
+        const userUsageCount = await prisma.booking.count({
+            where: {
+                userId,
+                campaignId: campaign.id,
+                status: {
+                    notIn: ["REJECTED", "CANCELLED"],
+                },
+            },
+        });
+
+        if (userUsageCount >= campaign.perUserLimit) {
+            return {
+                valid: false,
+                error: `You can only use this coupon a maximum of ${campaign.perUserLimit} time(s)`,
+            };
+        }
+    }
+
+    let discountAmount = 0;
+    if (campaign.discountType === "PERCENTAGE") {
+        discountAmount = (cartTotal * campaign.discountValue) / 100;
+    } else if (campaign.discountType === "FLAT") {
+        discountAmount = campaign.discountValue;
+    }
+
+    // Discount cannot exceed the cart total
+    discountAmount = Math.min(cartTotal, discountAmount);
+
+    return {
+        valid: true,
+        discountAmount,
+        campaignId: campaign.id,
+        couponCode: campaign.code,
+    };
+}
+
+// VALIDATE COUPON CODE
+router.post(
+    "/:storeId/validate-coupon",
+    requireAuth,
+    async (req: AuthRequest, res: Response) => {
+        try {
+            const storeId = String(req.params.storeId);
+            const { couponCode } = req.body ?? {};
+
+            if (!couponCode) {
+                return res.status(400).json({
+                    error: "couponCode is required",
+                });
+            }
+
+            const cart = await prisma.cart.findUnique({
+                where: {
+                    userId_storeId: {
+                        userId: req.user!.userId,
+                        storeId,
+                    },
+                },
+                include: {
+                    items: {
+                        include: {
+                            item: true,
+                        },
+                    },
+                },
+            });
+
+            if (!cart || cart.items.length === 0) {
+                return res.status(400).json({
+                    error: "Cart is empty",
+                });
+            }
+
+            const cartTotal = cart.items.reduce(
+                (sum, cartItem) => sum + cartItem.item.price * cartItem.quantity,
+                0
+            );
+
+            const validation = await validateCoupon(
+                couponCode,
+                storeId,
+                req.user!.userId,
+                cartTotal
+            );
+
+            if (!validation.valid) {
+                return res.status(400).json({
+                    error: validation.error,
+                });
+            }
+
+            res.json({
+                couponCode: validation.couponCode,
+                discountAmount: validation.discountAmount,
+                originalTotal: cartTotal,
+                finalTotal: cartTotal - validation.discountAmount,
+            });
+        } catch (error) {
+            console.error(error);
+            res.status(500).json({
+                error: "Failed to validate coupon",
+            });
+        }
+    }
+);
 
 // CREATE BOOKING FROM CART
 router.post(
@@ -35,6 +180,8 @@ router.post(
                     error: "Store id is required",
                 });
             }
+
+            const { couponCode } = req.body ?? {};
 
             // Check block status (both global and store-specific)
             const user = await prisma.user.findUnique({
@@ -115,7 +262,7 @@ router.post(
             }
 
             // calculate total
-            const totalAmount =
+            const cartTotal =
                 cart.items.reduce(
                     (sum, cartItem) =>
                         sum +
@@ -123,6 +270,28 @@ router.post(
                         cartItem.quantity,
                     0
                 );
+
+            // Handle coupon validation if couponCode is provided
+            let validationResult: any = null;
+            if (couponCode && typeof couponCode === "string" && couponCode.trim() !== "") {
+                const validation = await validateCoupon(
+                    couponCode,
+                    storeId,
+                    req.user!.userId,
+                    cartTotal
+                );
+
+                if (!validation.valid) {
+                    return res.status(400).json({
+                        error: validation.error,
+                    });
+                }
+
+                validationResult = validation;
+            }
+
+            const discountApplied = validationResult ? validationResult.discountAmount : 0;
+            const finalAmount = cartTotal - discountApplied;
 
             // Generate sequential order number A01 → A99 → B01 → ... → Z99
             const lastBooking = await prisma.booking.findFirst({
@@ -142,74 +311,76 @@ router.post(
                 }
             }
 
-            // create booking
-            const booking =
-                await prisma.booking.create({
+            // execute entire checkout and state updates atomically inside transaction
+            const booking = await prisma.$transaction(async (tx) => {
+                // 1. Create booking
+                const b = await tx.booking.create({
                     data: {
                         orderNumber,
-                        userId:
-                            req.user!.userId,
-                        storeId:
-                            storeId,
-                        totalAmount,
+                        userId: req.user!.userId,
+                        storeId: storeId,
+                        totalAmount: finalAmount,
                         status: "PLACED",
+                        discountApplied: validationResult ? discountApplied : null,
+                        appliedCouponCode: validationResult ? validationResult.couponCode : null,
+                        campaignId: validationResult ? validationResult.campaignId : null,
 
                         items: {
-                            create:
-                                cart.items.map(
-                                    (cartItem) => ({
-                                        itemId:
-                                            cartItem.item.id,
-
-                                        quantity:
-                                            cartItem.quantity,
-
-                                        unitPrice:
-                                            cartItem.item.price,
-                                    })
-                                ),
+                            create: cart.items.map((cartItem) => ({
+                                itemId: cartItem.item.id,
+                                quantity: cartItem.quantity,
+                                unitPrice: cartItem.item.price,
+                            })),
                         },
                     },
-
                     include: {
                         items: true,
                     },
                 });
 
-            // reduce inventory
-            for (const cartItem of cart.items) {
-                await prisma.item.update({
-                    where: {
-                        id: cartItem.item.id,
-                    },
-
-                    data: {
-                        stockQuantity: {
-                            decrement:
-                                cartItem.quantity,
+                // 2. Reduce inventory
+                for (const cartItem of cart.items) {
+                    await tx.item.update({
+                        where: {
+                            id: cartItem.item.id,
                         },
+                        data: {
+                            stockQuantity: {
+                                decrement: cartItem.quantity,
+                            },
+                        },
+                    });
+                }
+
+                // 3. Increment campaign usage count if applied
+                if (validationResult) {
+                    await tx.saleCampaign.update({
+                        where: { id: validationResult.campaignId },
+                        data: {
+                            usedCount: { increment: 1 },
+                        },
+                    });
+                }
+
+                // 4. Clear cart
+                await tx.cartItem.deleteMany({
+                    where: {
+                        cartId: cart.id,
                     },
                 });
-            }
 
-            // clear cart
-            await prisma.cartItem.deleteMany({
-                where: {
-                    cartId: cart.id,
-                },
+                return b;
             });
 
             res.json({
-                message:
-                    "Booking placed successfully",
+                message: "Booking placed successfully",
                 booking,
             });
         } catch (error) {
             console.error(error);
 
             res.status(500).json({
-                error:
-                    "Failed to place booking",
+                error: "Failed to place booking",
             });
         }
     }

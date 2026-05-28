@@ -485,6 +485,7 @@ router.post(
                                 id: true,
                                 firstName: true,
                                 email: true,
+                                prefBookingNotifications: true,
                             },
                         },
                         items: {
@@ -497,27 +498,29 @@ router.post(
 
                 // Send email to customer notifying them of approval
                 const orderNumberText = booking.orderNumber || booking.id.slice(0, 8).toUpperCase();
-                sendEmail({
-                    to: booking.user.email,
-                    subject: `Cancellation Approved: Order #${orderNumberText}`,
-                    html: `
-                        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 25px; border: 1px solid #f0f0f0; border-radius: 16px; background-color: #fcfcfc;">
-                            <h2 style="color: #10b981; margin-top: 0; font-size: 22px; font-weight: 800; border-bottom: 2px solid #ecfdf5; padding-bottom: 12px;">Munchies Booking Cancelled</h2>
-                            <p style="font-size: 15px; color: #374151; line-height: 1.6;">Hello <strong>${booking.user.firstName}</strong>,</p>
-                            <p style="font-size: 15px; color: #374151; line-height: 1.6;">Your cancellation request for <strong>Order #${orderNumberText}</strong> at <strong>${booking.store.name}</strong> has been approved by the store owner.</p>
-                            
-                            <div style="background-color: #f0fdf4; border: 1px solid #a7f3d0; border-radius: 12px; padding: 18px; margin: 20px 0; text-align: center;">
-                                <span style="font-size: 16px; font-weight: bold; color: #065f46;">Order Cancelled Successfully</span>
-                            </div>
+                if (updatedBooking.user.prefBookingNotifications) {
+                    sendEmail({
+                        to: updatedBooking.user.email,
+                        subject: `Cancellation Approved: Order #${orderNumberText}`,
+                        html: `
+                            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 25px; border: 1px solid #f0f0f0; border-radius: 16px; background-color: #fcfcfc;">
+                                <h2 style="color: #10b981; margin-top: 0; font-size: 22px; font-weight: 800; border-bottom: 2px solid #ecfdf5; padding-bottom: 12px;">Munchies Booking Cancelled</h2>
+                                <p style="font-size: 15px; color: #374151; line-height: 1.6;">Hello <strong>${updatedBooking.user.firstName}</strong>,</p>
+                                <p style="font-size: 15px; color: #374151; line-height: 1.6;">Your cancellation request for <strong>Order #${orderNumberText}</strong> at <strong>${updatedBooking.store.name}</strong> has been approved by the store owner.</p>
+                                
+                                <div style="background-color: #f0fdf4; border: 1px solid #a7f3d0; border-radius: 12px; padding: 18px; margin: 20px 0; text-align: center;">
+                                    <span style="font-size: 16px; font-weight: bold; color: #065f46;">Order Cancelled Successfully</span>
+                                </div>
 
-                            <p style="font-size: 15px; color: #374151; line-height: 1.6;">The store owner has acknowledged and cancelled this booking. You will not be charged, and no food will be prepared.</p>
-                            
-                            <div style="margin-top: 30px; border-top: 1px solid #f3f4f6; padding-top: 15px; font-size: 12px; color: #9ca3af; text-align: center;">
-                                This is an automated notification from Munchies. Please do not reply directly to this email.
+                                <p style="font-size: 15px; color: #374151; line-height: 1.6;">The store owner has acknowledged and cancelled this booking. You will not be charged, and no food will be prepared.</p>
+                                
+                                <div style="margin-top: 30px; border-top: 1px solid #f3f4f6; padding-top: 15px; font-size: 12px; color: #9ca3af; text-align: center;">
+                                    This is an automated notification from Munchies. Please do not reply directly to this email.
+                                </div>
                             </div>
-                        </div>
-                    `,
-                }).catch(err => console.error("[Nodemailer] Background send failed:", err));
+                        `,
+                    }).catch(err => console.error("[Nodemailer] Background send failed:", err));
+                }
             } else {
                 const restoredStatus = booking.statusBeforeCancel || "ACCEPTED";
                 updatedBooking = await prisma.booking.update({
@@ -533,6 +536,7 @@ router.post(
                                 id: true,
                                 firstName: true,
                                 email: true,
+                                prefBookingNotifications: true,
                             },
                         },
                         items: {
@@ -545,28 +549,30 @@ router.post(
 
                 // Send email to customer notifying them of rejection
                 const orderNumberText = booking.orderNumber || booking.id.slice(0, 8).toUpperCase();
-                sendEmail({
-                    to: booking.user.email,
-                    subject: `Cancellation Request Update: Order #${orderNumberText}`,
-                    html: `
-                        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 25px; border: 1px solid #f0f0f0; border-radius: 16px; background-color: #fffcfc;">
-                            <h2 style="color: #ea580c; margin-top: 0; font-size: 22px; font-weight: 800; border-bottom: 2px solid #fee2e2; padding-bottom: 12px;">Munchies Cancellation Request Update</h2>
-                            <p style="font-size: 15px; color: #374151; line-height: 1.6;">Hello <strong>${booking.user.firstName}</strong>,</p>
-                            <p style="font-size: 15px; color: #374151; line-height: 1.6;">Your cancellation request for <strong>Order #${orderNumberText}</strong> at <strong>${booking.store.name}</strong> was reviewed by the store owner and has been <strong>rejected</strong>.</p>
-                            
-                            <div style="background-color: #fff5f5; border: 1px solid #fecaca; border-radius: 12px; padding: 18px; margin: 20px 0; text-align: center;">
-                                <span style="font-size: 15px; font-weight: bold; color: #991b1b;">Cancellation Request Declined</span>
-                                <p style="margin: 6px 0 0 0; font-size: 14px; color: #7f1d1d;">Your order is being prepared and is currently in <strong style="text-transform: uppercase;">${restoredStatus}</strong> status.</p>
-                            </div>
+                if (updatedBooking.user.prefBookingNotifications) {
+                    sendEmail({
+                        to: updatedBooking.user.email,
+                        subject: `Cancellation Request Update: Order #${orderNumberText}`,
+                        html: `
+                            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 25px; border: 1px solid #f0f0f0; border-radius: 16px; background-color: #fffcfc;">
+                                <h2 style="color: #ea580c; margin-top: 0; font-size: 22px; font-weight: 800; border-bottom: 2px solid #fee2e2; padding-bottom: 12px;">Munchies Cancellation Request Update</h2>
+                                <p style="font-size: 15px; color: #374151; line-height: 1.6;">Hello <strong>${updatedBooking.user.firstName}</strong>,</p>
+                                <p style="font-size: 15px; color: #374151; line-height: 1.6;">Your cancellation request for <strong>Order #${orderNumberText}</strong> at <strong>${updatedBooking.store.name}</strong> was reviewed by the store owner and has been <strong>rejected</strong>.</p>
+                                
+                                <div style="background-color: #fff5f5; border: 1px solid #fecaca; border-radius: 12px; padding: 18px; margin: 20px 0; text-align: center;">
+                                    <span style="font-size: 15px; font-weight: bold; color: #991b1b;">Cancellation Request Declined</span>
+                                    <p style="margin: 6px 0 0 0; font-size: 14px; color: #7f1d1d;">Your order is being prepared and is currently in <strong style="text-transform: uppercase;">${restoredStatus}</strong> status.</p>
+                                </div>
 
-                            <p style="font-size: 15px; color: #374151; line-height: 1.6;">The store owner is proceeding with your order as scheduled. Please get ready to collect your munchies!</p>
-                            
-                            <div style="margin-top: 30px; border-top: 1px solid #f3f4f6; padding-top: 15px; font-size: 12px; color: #9ca3af; text-align: center;">
-                                This is an automated notification from Munchies. Please do not reply directly to this email.
+                                <p style="font-size: 15px; color: #374151; line-height: 1.6;">The store owner is proceeding with your order as scheduled. Please get ready to collect your munchies!</p>
+                                
+                                <div style="margin-top: 30px; border-top: 1px solid #f3f4f6; padding-top: 15px; font-size: 12px; color: #9ca3af; text-align: center;">
+                                    This is an automated notification from Munchies. Please do not reply directly to this email.
+                                </div>
                             </div>
-                        </div>
-                    `,
-                }).catch(err => console.error("[Nodemailer] Background send failed:", err));
+                        `,
+                    }).catch(err => console.error("[Nodemailer] Background send failed:", err));
+                }
             }
 
             res.json({
@@ -578,6 +584,433 @@ router.post(
 
             res.status(500).json({
                 error: "Failed to respond to cancellation request",
+            });
+        }
+    }
+);
+
+// Helper function to generate a unique coupon code
+async function generateUniqueCouponCode(): Promise<string> {
+    let attempts = 0;
+    while (attempts < 10) {
+        const code = `MC-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
+        const existing = await prisma.saleCampaign.findUnique({
+            where: { code }
+        });
+        if (!existing) {
+            return code;
+        }
+        attempts++;
+    }
+    throw new Error("Failed to generate unique coupon code");
+}
+
+// CREATE SALE CAMPAIGN
+router.post(
+    "/campaigns",
+    requireAuth,
+    requireRole("STORE_OWNER"),
+    async (req: AuthRequest, res: Response) => {
+        try {
+            const {
+                storeId,
+                code,
+                discountType,
+                discountValue,
+                startDate,
+                endDate,
+                minOrderValue,
+                globalLimit,
+                perUserLimit,
+            } = req.body;
+
+            if (!storeId || !discountType || discountValue === undefined || !startDate || !endDate) {
+                return res.status(400).json({
+                    error: "storeId, discountType, discountValue, startDate, and endDate are required",
+                });
+            }
+
+            if (discountType !== "PERCENTAGE" && discountType !== "FLAT") {
+                return res.status(400).json({
+                    error: "discountType must be either PERCENTAGE or FLAT",
+                });
+            }
+
+            const parsedDiscountValue = Number(discountValue);
+            if (Number.isNaN(parsedDiscountValue) || parsedDiscountValue <= 0) {
+                return res.status(400).json({
+                    error: "discountValue must be a positive number",
+                });
+            }
+
+            if (discountType === "PERCENTAGE" && parsedDiscountValue > 100) {
+                return res.status(400).json({
+                    error: "PERCENTAGE discount cannot exceed 100%",
+                });
+            }
+
+            const start = new Date(startDate);
+            const end = new Date(endDate);
+
+            if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+                return res.status(400).json({
+                    error: "Invalid startDate or endDate format",
+                });
+            }
+
+            if (start >= end) {
+                return res.status(400).json({
+                    error: "startDate must be before endDate",
+                });
+            }
+
+            const parsedMinOrderValue = minOrderValue !== undefined ? Number(minOrderValue) : 0;
+            if (Number.isNaN(parsedMinOrderValue) || parsedMinOrderValue < 0) {
+                return res.status(400).json({
+                    error: "minOrderValue must be a non-negative number",
+                });
+            }
+
+            const parsedGlobalLimit = globalLimit !== undefined ? Number(globalLimit) : null;
+            if (parsedGlobalLimit !== null && (Number.isNaN(parsedGlobalLimit) || !Number.isInteger(parsedGlobalLimit) || parsedGlobalLimit <= 0)) {
+                return res.status(400).json({
+                    error: "globalLimit must be a positive integer",
+                });
+            }
+
+            const parsedPerUserLimit = perUserLimit !== undefined ? Number(perUserLimit) : null;
+            if (parsedPerUserLimit !== null && (Number.isNaN(parsedPerUserLimit) || !Number.isInteger(parsedPerUserLimit) || parsedPerUserLimit <= 0)) {
+                return res.status(400).json({
+                    error: "perUserLimit must be a positive integer",
+                });
+            }
+
+            // Verify store ownership
+            const store = await prisma.store.findFirst({
+                where: {
+                    id: storeId,
+                    ownerId: req.user!.userId,
+                },
+            });
+
+            if (!store) {
+                return res.status(403).json({
+                    error: "Store not found or unauthorized",
+                });
+            }
+
+            // Determine/validate coupon code
+            let finalCode = "";
+            if (code && typeof code === "string" && code.trim() !== "") {
+                finalCode = code.trim().toUpperCase();
+                // Validate uniqueness
+                const existing = await prisma.saleCampaign.findUnique({
+                    where: { code: finalCode },
+                });
+                if (existing) {
+                    return res.status(400).json({
+                        error: `Coupon code '${finalCode}' is already in use`,
+                    });
+                }
+            } else {
+                finalCode = await generateUniqueCouponCode();
+            }
+
+            const now = new Date();
+            const isActive = now >= start && now <= end;
+
+            const campaign = await prisma.saleCampaign.create({
+                data: {
+                    storeId,
+                    code: finalCode,
+                    discountType,
+                    discountValue: parsedDiscountValue,
+                    startDate: start,
+                    endDate: end,
+                    minOrderValue: parsedMinOrderValue,
+                    globalLimit: parsedGlobalLimit,
+                    perUserLimit: parsedPerUserLimit,
+                    isActive,
+                },
+            });
+
+            // Dispatch "New Promo Alert" email to subscribed users
+            const storeName = store ? store.name : "Munchies Store";
+
+            const subscribedUsers = await prisma.user.findMany({
+                where: {
+                    prefPromoAlerts: true,
+                },
+                select: {
+                    email: true,
+                    firstName: true,
+                },
+            });
+
+            const discountText = campaign.discountType === "PERCENTAGE" ? `${campaign.discountValue}%` : `₹${campaign.discountValue}`;
+
+            for (const user of subscribedUsers) {
+                sendEmail({
+                    to: user.email,
+                    subject: `New Promo: Save ${discountText} at ${storeName}! 🎁`,
+                    html: `
+                        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 25px; border: 1px solid #f0f0f0; border-radius: 16px; background-color: #fffafb;">
+                            <h2 style="color: #e11d48; margin-top: 0; font-size: 22px; font-weight: 800; border-bottom: 2px solid #ffe4e6; padding-bottom: 12px;">New Promotion Alert! 🎁</h2>
+                            <p style="font-size: 15px; color: #374151; line-height: 1.6;">Hello <strong>${user.firstName || "Customer"}</strong>,</p>
+                            <p style="font-size: 15px; color: #374151; line-height: 1.6;">A new sale campaign has been launched at <strong>${storeName}</strong>! You can now get <strong>${discountText} off</strong> your next order!</p>
+                            
+                            <div style="background-color: #fff; border: 1px solid #fda4af; border-radius: 12px; padding: 18px; margin: 20px 0; text-align: center;">
+                                <span style="font-size: 12px; font-weight: 800; color: #e11d48; text-transform: uppercase; tracking-wider: 0.1em; display: block; margin-bottom: 4px;">Use Coupon Code</span>
+                                <span style="font-size: 24px; font-weight: 900; color: #111827; letter-spacing: 0.05em; text-transform: uppercase;">${campaign.code}</span>
+                                <p style="margin: 8px 0 0 0; font-size: 13px; color: #4b5563;">Min Order Value: ₹${campaign.minOrderValue.toFixed(2)}</p>
+                            </div>
+
+                            <p style="font-size: 15px; color: #374151; line-height: 1.6;">Make sure to apply the coupon code during your checkout to claim your savings. Offer valid until ${new Date(campaign.endDate).toLocaleDateString()}.</p>
+                            
+                            <div style="margin-top: 30px; border-top: 1px solid #f3f4f6; padding-top: 15px; font-size: 12px; color: #9ca3af; text-align: center;">
+                                You received this email because you are subscribed to promotional alerts. To manage your subscriptions, visit your account preferences in the app.
+                            </div>
+                        </div>
+                    `,
+                }).catch((err) => console.error(`[Nodemailer] Failed to send promotional alert to ${user.email}:`, err));
+            }
+
+            res.json(campaign);
+        } catch (error) {
+            console.error(error);
+            res.status(500).json({
+                error: "Failed to create campaign",
+            });
+        }
+    }
+);
+
+// LIST CAMPAIGNS FOR STORE OWNER
+router.get(
+    "/campaigns",
+    requireAuth,
+    requireRole("STORE_OWNER"),
+    async (req: AuthRequest, res: Response) => {
+        try {
+            const stores = await prisma.store.findMany({
+                where: {
+                    ownerId: req.user!.userId,
+                },
+                select: {
+                    id: true,
+                },
+            });
+
+            const storeIds = stores.map((s) => s.id);
+            if (storeIds.length === 0) {
+                return res.json([]);
+            }
+
+            const campaigns = await prisma.saleCampaign.findMany({
+                where: {
+                    storeId: {
+                        in: storeIds,
+                    },
+                },
+                include: {
+                    store: {
+                        select: {
+                            id: true,
+                            name: true,
+                        },
+                    },
+                },
+                orderBy: {
+                    createdAt: "desc",
+                },
+            });
+
+            res.json(campaigns);
+        } catch (error) {
+            console.error(error);
+            res.status(500).json({
+                error: "Failed to fetch campaigns",
+            });
+        }
+    }
+);
+
+// GET CAMPAIGN BY ID
+router.get(
+    "/campaigns/:id",
+    requireAuth,
+    requireRole("STORE_OWNER"),
+    async (req: AuthRequest, res: Response) => {
+        try {
+            const campaignId = String(req.params.id);
+
+            const campaign = await prisma.saleCampaign.findUnique({
+                where: { id: campaignId },
+                include: {
+                    store: true,
+                },
+            });
+
+            if (!campaign) {
+                return res.status(404).json({
+                    error: "Campaign not found",
+                });
+            }
+
+            if (campaign.store.ownerId !== req.user!.userId) {
+                return res.status(403).json({
+                    error: "Unauthorized",
+                });
+            }
+
+            res.json(campaign);
+        } catch (error) {
+            console.error(error);
+            res.status(500).json({
+                error: "Failed to fetch campaign details",
+            });
+        }
+    }
+);
+
+// DELETE CAMPAIGN BY ID
+router.delete(
+    "/campaigns/:id",
+    requireAuth,
+    requireRole("STORE_OWNER"),
+    async (req: AuthRequest, res: Response) => {
+        try {
+            const campaignId = String(req.params.id);
+
+            const campaign = await prisma.saleCampaign.findUnique({
+                where: { id: campaignId },
+                include: {
+                    store: true,
+                },
+            });
+
+            if (!campaign) {
+                return res.status(404).json({
+                    error: "Campaign not found",
+                });
+            }
+
+            if (campaign.store.ownerId !== req.user!.userId) {
+                return res.status(403).json({
+                    error: "Unauthorized",
+                });
+            }
+
+            await prisma.saleCampaign.delete({
+                where: { id: campaignId },
+            });
+
+            res.json({
+                message: "Campaign successfully deleted",
+            });
+        } catch (error) {
+            console.error(error);
+            res.status(500).json({
+                error: "Failed to delete campaign",
+            });
+        }
+    }
+);
+
+// POST /stores/:id/announce
+router.post(
+    "/stores/:id/announce",
+    requireAuth,
+    requireRole("STORE_OWNER"),
+    async (req: AuthRequest, res: Response) => {
+        try {
+            const storeId = String(req.params.id);
+
+            const store = await prisma.store.findUnique({
+                where: { id: storeId },
+            });
+
+            if (!store) {
+                return res.status(404).json({
+                    error: "Store not found",
+                });
+            }
+
+            if (store.ownerId !== req.user!.userId) {
+                return res.status(403).json({
+                    error: "Unauthorized",
+                });
+            }
+
+            if (store.announcementSent) {
+                return res.status(400).json({
+                    error: "A launch announcement has already been broadcasted for this store",
+                });
+            }
+
+            // Verify if within 7 days of store creation
+            const diffTime = Date.now() - store.createdAt.getTime();
+            const diffDays = diffTime / (1000 * 60 * 60 * 24);
+
+            if (diffDays > 7) {
+                return res.status(400).json({
+                    error: "Launch announcements can only be sent within 7 days of store activation",
+                });
+            }
+
+            // Get all subscribed users
+            const subscribedUsers = await prisma.user.findMany({
+                where: {
+                    prefNewStoreNotifications: true,
+                },
+                select: {
+                    email: true,
+                    firstName: true,
+                },
+            });
+
+            // Send launch email using Nodemailer
+            for (const user of subscribedUsers) {
+                sendEmail({
+                    to: user.email,
+                    subject: `New Store Alert: ${store.name} is now open! 🥳`,
+                    html: `
+                        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 25px; border: 1px solid #f0f0f0; border-radius: 16px; background-color: #fffaf5;">
+                            <h2 style="color: #ea580c; margin-top: 0; font-size: 22px; font-weight: 800; border-bottom: 2px solid #ffedd5; padding-bottom: 12px;">New Munchies Spot! 🥳</h2>
+                            <p style="font-size: 15px; color: #374151; line-height: 1.6;">Hello <strong>${user.firstName || "Customer"}</strong>,</p>
+                            <p style="font-size: 15px; color: #374151; line-height: 1.6;">We are thrilled to announce that a brand new store <strong>${store.name}</strong> is now open at <strong>${store.hostel}</strong>, Room <strong>${store.roomNumber}</strong>!</p>
+                            
+                            <div style="background-color: #fff; border: 1px solid #fed7aa; border-radius: 12px; padding: 18px; margin: 20px 0; text-align: center;">
+                                <span style="font-size: 18px; font-weight: 800; color: #ea580c;">${store.name}</span>
+                                <p style="margin: 6px 0 0 0; font-size: 14px; color: #4b5563;">Located at ${store.hostel}, Room ${store.roomNumber}</p>
+                            </div>
+
+                            <p style="font-size: 15px; color: #374151; line-height: 1.6;">Head over to the Munchies app now to explore their fresh menu and place your first booking!</p>
+                            
+                            <div style="margin-top: 30px; border-top: 1px solid #f3f4f6; padding-top: 15px; font-size: 12px; color: #9ca3af; text-align: center;">
+                                You received this email because you are subscribed to new store alerts. To manage your subscriptions, visit your account preferences in the app.
+                            </div>
+                        </div>
+                    `,
+                }).catch((err) => console.error(`[Nodemailer] Failed to send new store notification to ${user.email}:`, err));
+            }
+
+            // Set announcementSent = true
+            const updatedStore = await prisma.store.update({
+                where: { id: storeId },
+                data: {
+                    announcementSent: true,
+                },
+            });
+
+            res.json({
+                message: "Launch announcement successfully sent to all campus subscribers",
+                store: updatedStore,
+            });
+        } catch (error) {
+            console.error(error);
+            res.status(500).json({
+                error: "Failed to dispatch store announcement",
             });
         }
     }

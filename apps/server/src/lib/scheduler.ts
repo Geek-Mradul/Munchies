@@ -92,14 +92,59 @@ export async function checkUncollectedOrders() {
                 `;
             }
 
-            sendEmail({
-                to: user.email,
-                subject: emailSubject,
-                html: emailHtml,
-            }).catch((err) => console.error(`[Scheduler] Failed to send email to ${user.email}:`, err));
+            if (updatedUser.prefBookingNotifications) {
+                sendEmail({
+                    to: user.email,
+                    subject: emailSubject,
+                    html: emailHtml,
+                }).catch((err) => console.error(`[Scheduler] Failed to send email to ${user.email}:`, err));
+            }
         }
     } catch (error) {
         console.error("[Scheduler] Error running uncollected orders check:", error);
+    }
+}
+
+export async function checkSaleCampaigns() {
+    try {
+        const now = new Date();
+
+        // Fetch all campaigns to perform evaluation in JS
+        const campaigns = await prisma.saleCampaign.findMany();
+
+        const toActivate: string[] = [];
+        const toDeactivate: string[] = [];
+
+        for (const c of campaigns) {
+            const shouldBeActive =
+                now >= c.startDate &&
+                now <= c.endDate &&
+                (c.globalLimit === null || c.usedCount < c.globalLimit);
+
+            if (shouldBeActive && !c.isActive) {
+                toActivate.push(c.id);
+            } else if (!shouldBeActive && c.isActive) {
+                toDeactivate.push(c.id);
+            }
+        }
+
+        if (toActivate.length > 0) {
+            await prisma.saleCampaign.updateMany({
+                where: { id: { in: toActivate } },
+                data: { isActive: true },
+            });
+            console.log(`[Scheduler] Activated ${toActivate.length} campaign(s).`);
+        }
+
+        if (toDeactivate.length > 0) {
+            await prisma.saleCampaign.updateMany({
+                where: { id: { in: toDeactivate } },
+                data: { isActive: false },
+            });
+            console.log(`[Scheduler] Deactivated ${toDeactivate.length} campaign(s).`);
+        }
+    } catch (error) {
+        console.error("[Scheduler] Error running campaigns scheduling check:", error);
     }
 }
 
@@ -110,16 +155,20 @@ export function startScheduler(intervalMs = 60 * 1000) {
     
     // Run immediately on boot
     checkUncollectedOrders();
+    checkSaleCampaigns();
     
     // Setup periodic task
-    schedulerInterval = setInterval(checkUncollectedOrders, intervalMs);
-    console.log(`[Scheduler] Background uncollected orders daemon started successfully. (Interval: ${intervalMs}ms)`);
+    schedulerInterval = setInterval(async () => {
+        await checkUncollectedOrders();
+        await checkSaleCampaigns();
+    }, intervalMs);
+    console.log(`[Scheduler] Background daemons started successfully. (Interval: ${intervalMs}ms)`);
 }
 
 export function stopScheduler() {
     if (schedulerInterval) {
         clearInterval(schedulerInterval);
         schedulerInterval = null;
-        console.log("[Scheduler] Background uncollected orders daemon stopped.");
+        console.log("[Scheduler] Background daemons stopped.");
     }
 }

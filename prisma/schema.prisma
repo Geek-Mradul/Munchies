@@ -33,6 +33,10 @@ model User {
   warningsCount Int      @default(0)
   isBlocked     Boolean  @default(false)
 
+  prefBookingNotifications  Boolean @default(true)
+  prefPromoAlerts           Boolean @default(true)
+  prefNewStoreNotifications Boolean @default(true)
+
   stores             Store[]
   carts              Cart[]
   bookings           Booking[]
@@ -48,12 +52,14 @@ model Store {
   roomNumber String
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
+  announcementSent Boolean @default(false)
 
   owner    User      @relation(fields: [ownerId], references: [id])
   items    Item[]
   carts    Cart[]
   bookings Booking[]
   storeBlocks StoreBlock[]
+  campaigns   SaleCampaign[]
 }
 
 model Item {
@@ -112,6 +118,11 @@ model Booking {
   user  User          @relation(fields: [userId], references: [id])
   store Store         @relation(fields: [storeId], references: [id])
   items BookingItem[]
+
+  discountApplied   Float?
+  appliedCouponCode String?
+  campaignId        String?
+  campaign          SaleCampaign? @relation(fields: [campaignId], references: [id])
 }
 
 model BookingItem {
@@ -145,4 +156,29 @@ model StoreBlock {
   store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
 
   @@unique([userId, storeId])
+}
+
+enum DiscountType {
+  PERCENTAGE
+  FLAT
+}
+
+model SaleCampaign {
+  id            String       @id @default(uuid())
+  storeId       String
+  code          String       @unique
+  discountType  DiscountType
+  discountValue Float
+  startDate     DateTime
+  endDate       DateTime
+  minOrderValue Float        @default(0)
+  globalLimit   Int?
+  perUserLimit  Int?
+  usedCount     Int          @default(0)
+  isActive      Boolean      @default(false)
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  store         Store        @relation(fields: [storeId], references: [id])
+  bookings      Booking[]
 }

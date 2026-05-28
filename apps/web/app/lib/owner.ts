@@ -18,6 +18,8 @@ export type OwnerInventoryStore = {
     hostel: string;
     roomNumber: string;
     items: OwnerInventoryItem[];
+    createdAt: string;
+    announcementSent: boolean;
 };
 
 async function parseError(response: Response, fallback: string) {
@@ -137,4 +139,75 @@ export async function respondToBookingCancellation(
     }
 
     return response.json() as Promise<{ message: string; booking: OwnerBooking }>;
+}
+
+export type OwnerCampaign = {
+    id: string;
+    storeId: string;
+    code: string;
+    discountType: "PERCENTAGE" | "FLAT";
+    discountValue: number;
+    startDate: string;
+    endDate: string;
+    minOrderValue: number;
+    globalLimit: number | null;
+    perUserLimit: number | null;
+    usedCount: number;
+    isActive: boolean;
+    createdAt?: string;
+    updatedAt?: string;
+    store?: {
+        id: string;
+        name: string;
+    };
+};
+
+export async function fetchOwnerCampaigns() {
+    const response = await apiFetch("/owner/campaigns", {
+        includeAuth: true,
+        cache: "no-store",
+    });
+
+    if (!response.ok) {
+        throw new Error(await parseError(response, "Failed to load campaigns"));
+    }
+
+    return response.json() as Promise<OwnerCampaign[]>;
+}
+
+export async function createOwnerCampaign(data: {
+    storeId: string;
+    code?: string;
+    discountType: "PERCENTAGE" | "FLAT";
+    discountValue: number;
+    startDate: string;
+    endDate: string;
+    minOrderValue?: number;
+    globalLimit?: number | null;
+    perUserLimit?: number | null;
+}) {
+    const response = await apiFetch("/owner/campaigns", {
+        method: "POST",
+        includeAuth: true,
+        body: data,
+    });
+
+    if (!response.ok) {
+        throw new Error(await parseError(response, "Failed to create campaign"));
+    }
+
+    return response.json() as Promise<OwnerCampaign>;
+}
+
+export async function deleteOwnerCampaign(campaignId: string) {
+    const response = await apiFetch(`/owner/campaigns/${campaignId}`, {
+        method: "DELETE",
+        includeAuth: true,
+    });
+
+    if (!response.ok) {
+        throw new Error(await parseError(response, "Failed to delete campaign"));
+    }
+
+    return response.json() as Promise<{ message: string }>;
 }

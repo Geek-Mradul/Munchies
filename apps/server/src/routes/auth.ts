@@ -3,6 +3,7 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 
 import { prisma } from "../lib/prisma";
+import { requireAuth, AuthRequest } from "../middleware/auth";
 
 const router = Router();
 
@@ -121,4 +122,52 @@ router.post("/login", async (req, res) => {
         });
     }
 });
+
+// GET /auth/preferences
+router.get("/preferences", requireAuth, async (req: AuthRequest, res) => {
+    try {
+        const user = await prisma.user.findUnique({
+            where: { id: req.user!.userId },
+            select: {
+                prefBookingNotifications: true,
+                prefPromoAlerts: true,
+                prefNewStoreNotifications: true,
+            },
+        });
+        if (!user) {
+            return res.status(404).json({ error: "User not found" });
+        }
+        res.json(user);
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ error: "Failed to fetch preferences" });
+    }
+});
+
+// PUT /auth/preferences
+router.put("/preferences", requireAuth, async (req: AuthRequest, res) => {
+    try {
+        const { prefBookingNotifications, prefPromoAlerts, prefNewStoreNotifications } = req.body ?? {};
+
+        const updated = await prisma.user.update({
+            where: { id: req.user!.userId },
+            data: {
+                prefBookingNotifications: prefBookingNotifications !== undefined ? Boolean(prefBookingNotifications) : undefined,
+                prefPromoAlerts: prefPromoAlerts !== undefined ? Boolean(prefPromoAlerts) : undefined,
+                prefNewStoreNotifications: prefNewStoreNotifications !== undefined ? Boolean(prefNewStoreNotifications) : undefined,
+            },
+            select: {
+                prefBookingNotifications: true,
+                prefPromoAlerts: true,
+                prefNewStoreNotifications: true,
+            },
+        });
+
+        res.json(updated);
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ error: "Failed to update preferences" });
+    }
+});
+
 export default router;

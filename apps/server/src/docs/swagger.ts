@@ -46,6 +46,29 @@ const swaggerSpec = {
                     "CANCELLED"
                 ],
             },
+            DiscountType: {
+                type: "string",
+                enum: ["PERCENTAGE", "FLAT"],
+            },
+            SaleCampaign: {
+                type: "object",
+                properties: {
+                    id: { type: "string" },
+                    storeId: { type: "string" },
+                    code: { type: "string" },
+                    discountType: { $ref: "#/components/schemas/DiscountType" },
+                    discountValue: { type: "number" },
+                    startDate: { type: "string", format: "date-time" },
+                    endDate: { type: "string", format: "date-time" },
+                    minOrderValue: { type: "number" },
+                    globalLimit: { type: "number", nullable: true },
+                    perUserLimit: { type: "number", nullable: true },
+                    usedCount: { type: "number" },
+                    isActive: { type: "boolean" },
+                    createdAt: { type: "string", format: "date-time" },
+                    updatedAt: { type: "string", format: "date-time" },
+                },
+            },
             User: {
                 type: "object",
                 properties: {
@@ -463,7 +486,7 @@ const swaggerSpec = {
         "/checkout/{storeId}": {
             post: {
                 tags: ["Checkout"],
-                summary: "Create a booking from the cart",
+                summary: "Create a booking from the cart, optionally applying a coupon code",
                 security: [{ bearerAuth: [] }],
                 parameters: [
                     {
@@ -473,6 +496,18 @@ const swaggerSpec = {
                         schema: { type: "string" },
                     },
                 ],
+                requestBody: {
+                    content: {
+                        "application/json": {
+                            schema: {
+                                type: "object",
+                                properties: {
+                                    couponCode: { type: "string", description: "Optional coupon code to apply to this order" },
+                                },
+                            },
+                        },
+                    },
+                },
                 responses: {
                     200: {
                         description: "Booking created",
@@ -481,6 +516,56 @@ const swaggerSpec = {
                                 schema: { $ref: "#/components/schemas/BookingWithRelations" },
                             },
                         },
+                    },
+                },
+            },
+        },
+        "/checkout/{storeId}/validate-coupon": {
+            post: {
+                tags: ["Checkout"],
+                summary: "Validate a coupon code and calculate potential discount",
+                security: [{ bearerAuth: [] }],
+                parameters: [
+                    {
+                        in: "path",
+                        name: "storeId",
+                        required: true,
+                        schema: { type: "string" },
+                    },
+                ],
+                requestBody: {
+                    required: true,
+                    content: {
+                        "application/json": {
+                            schema: {
+                                type: "object",
+                                required: ["couponCode"],
+                                properties: {
+                                    couponCode: { type: "string" },
+                                },
+                            },
+                        },
+                    },
+                },
+                responses: {
+                    200: {
+                        description: "Coupon is valid",
+                        content: {
+                            "application/json": {
+                                schema: {
+                                    type: "object",
+                                    properties: {
+                                        couponCode: { type: "string" },
+                                        discountAmount: { type: "number" },
+                                        originalTotal: { type: "number" },
+                                        finalTotal: { type: "number" },
+                                    },
+                                },
+                            },
+                        },
+                    },
+                    400: {
+                        description: "Invalid coupon code or constraint violation",
                     },
                 },
             },
@@ -638,6 +723,115 @@ const swaggerSpec = {
                     },
                     404: {
                         description: "Booking not found",
+                    },
+                },
+            },
+        },
+        "/owner/campaigns": {
+            get: {
+                tags: ["Owner"],
+                summary: "List all sale campaigns for stores owned by the current owner",
+                security: [{ bearerAuth: [] }],
+                responses: {
+                    200: {
+                        description: "List of campaigns",
+                        content: {
+                            "application/json": {
+                                schema: {
+                                    type: "array",
+                                    items: { $ref: "#/components/schemas/SaleCampaign" },
+                                },
+                            },
+                        },
+                    },
+                },
+            },
+            post: {
+                tags: ["Owner"],
+                summary: "Create a new sale campaign and generate unique coupon code",
+                security: [{ bearerAuth: [] }],
+                requestBody: {
+                    required: true,
+                    content: {
+                        "application/json": {
+                            schema: {
+                                type: "object",
+                                required: ["storeId", "discountType", "discountValue", "startDate", "endDate"],
+                                properties: {
+                                    storeId: { type: "string" },
+                                    code: { type: "string", description: "Optional custom unique code. Auto-generated if omitted." },
+                                    discountType: { $ref: "#/components/schemas/DiscountType" },
+                                    discountValue: { type: "number" },
+                                    startDate: { type: "string", format: "date-time" },
+                                    endDate: { type: "string", format: "date-time" },
+                                    minOrderValue: { type: "number", default: 0 },
+                                    globalLimit: { type: "number", nullable: true },
+                                    perUserLimit: { type: "number", nullable: true },
+                                },
+                            },
+                        },
+                    },
+                },
+                responses: {
+                    200: {
+                        description: "Campaign successfully created",
+                        content: {
+                            "application/json": {
+                                schema: { $ref: "#/components/schemas/SaleCampaign" },
+                            },
+                        },
+                    },
+                    400: {
+                        description: "Validation error or code already in use",
+                    },
+                },
+            },
+        },
+        "/owner/campaigns/{id}": {
+            get: {
+                tags: ["Owner"],
+                summary: "Get specific campaign details",
+                security: [{ bearerAuth: [] }],
+                parameters: [
+                    {
+                        in: "path",
+                        name: "id",
+                        required: true,
+                        schema: { type: "string" },
+                    },
+                ],
+                responses: {
+                    200: {
+                        description: "Campaign details",
+                        content: {
+                            "application/json": {
+                                schema: { $ref: "#/components/schemas/SaleCampaign" },
+                            },
+                        },
+                    },
+                    404: {
+                        description: "Campaign not found",
+                    },
+                },
+            },
+            delete: {
+                tags: ["Owner"],
+                summary: "Delete a sale campaign",
+                security: [{ bearerAuth: [] }],
+                parameters: [
+                    {
+                        in: "path",
+                        name: "id",
+                        required: true,
+                        schema: { type: "string" },
+                    },
+                ],
+                responses: {
+                    200: {
+                        description: "Campaign successfully deleted",
+                    },
+                    404: {
+                        description: "Campaign not found",
                     },
                 },
             },

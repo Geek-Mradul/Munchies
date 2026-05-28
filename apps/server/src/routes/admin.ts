@@ -1,6 +1,7 @@
 import { Router, Response } from "express";
 
 import { prisma } from "../lib/prisma";
+import { sendEmail } from "../lib/email";
 import {
     requireAuth,
     requireRole,
@@ -320,6 +321,44 @@ router.get(
             res.status(500).json({
                 error: "Failed to fetch stores list",
             });
+        }
+    }
+);
+
+// POST /stores
+router.post(
+    "/stores",
+    async (req: AuthRequest, res: Response) => {
+        try {
+            const { name, hostel, roomNumber, ownerEmail } = req.body ?? {};
+            if (!name || !hostel || !roomNumber || !ownerEmail) {
+                return res.status(400).json({ error: "Missing required fields" });
+            }
+
+            const owner = await prisma.user.findUnique({
+                where: { email: ownerEmail },
+            });
+
+            if (!owner) {
+                return res.status(404).json({ error: "Owner user not found with specified email" });
+            }
+
+            const store = await prisma.store.create({
+                data: {
+                    name,
+                    hostel,
+                    roomNumber,
+                    ownerId: owner.id,
+                },
+            });
+
+            res.json({
+                message: "Store created successfully",
+                store,
+            });
+        } catch (error) {
+            console.error(error);
+            res.status(500).json({ error: "Failed to create store" });
         }
     }
 );

@@ -2,11 +2,13 @@
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { apiFetch } from "../lib/api";
 import { getToken } from "../lib/auth";
 import { BookingStatus, type OwnerBooking } from "../lib/bookings";
 import {
     createOwnerItem, deleteOwnerItem, fetchOwnerBookings, fetchOwnerInventory,
     updateOwnerBookingStatus, updateOwnerItem, respondToBookingCancellation, type OwnerInventoryStore,
+    fetchOwnerCampaigns, createOwnerCampaign, deleteOwnerCampaign, type OwnerCampaign,
 } from "../lib/owner";
 import { useToast } from "./Toast";
 import OwnerPanelShell from "./OwnerPanelShell";
@@ -43,16 +45,24 @@ export default function OwnerDashboardClient() {
     const [error, setError] = useState("");
     const [inventory, setInventory] = useState<OwnerInventoryStore[]>([]);
     const [bookings, setBookings] = useState<OwnerBooking[]>([]);
+    const [campaigns, setCampaigns] = useState<OwnerCampaign[]>([]);
     const [processingItemId, setProcessingItemId] = useState<string | null>(null);
     const [processingBookingId, setProcessingBookingId] = useState<string | null>(null);
+    const [processingCampaignId, setProcessingCampaignId] = useState<string | null>(null);
     const [editingItemId, setEditingItemId] = useState<string | null>(null);
-    const [activeTab, setActiveTab] = useState<"inventory" | "bookings">("inventory");
+    const [activeTab, setActiveTab] = useState<"inventory" | "bookings" | "promotions">("inventory");
     const [showAddItem, setShowAddItem] = useState(false);
+    const [showAddCampaign, setShowAddCampaign] = useState(false);
     const [selectedStoreId, setSelectedStoreId] = useState<string>("");
+    const [sendingAnnouncement, setSendingAnnouncement] = useState(false);
+    const [announceModalOpen, setAnnounceModalOpen] = useState(false);
 
     // Custom Confirmation Modals States
     const [deleteModalOpen, setDeleteModalOpen] = useState(false);
     const [selectedItemIdToDelete, setSelectedItemIdToDelete] = useState<string | null>(null);
+
+    const [deleteCampaignModalOpen, setDeleteCampaignModalOpen] = useState(false);
+    const [selectedCampaignToDelete, setSelectedCampaignToDelete] = useState<string | null>(null);
 
     const [cancelModalOpen, setCancelModalOpen] = useState(false);
     const [cancelBookingId, setCancelBookingId] = useState<string | null>(null);
@@ -60,9 +70,14 @@ export default function OwnerDashboardClient() {
 
     async function load() {
         try {
-            const [inv, bk] = await Promise.all([fetchOwnerInventory(), fetchOwnerBookings()]);
+            const [inv, bk, camps] = await Promise.all([
+                fetchOwnerInventory(),
+                fetchOwnerBookings(),
+                fetchOwnerCampaigns()
+            ]);
             setInventory(inv);
             setBookings(bk);
+            setCampaigns(camps);
             if (!selectedStoreId && inv.length > 0) setSelectedStoreId(inv[0].id);
             setState("ready");
         } catch (e) {
@@ -85,6 +100,39 @@ export default function OwnerDashboardClient() {
     const lowStockItems = useMemo(() => storeItems.filter((i) => i.stockQuantity <= LOW_STOCK), [storeItems]);
     const storeBookings = useMemo(() => bookings.filter((b) => b.store.id === selectedStoreId), [bookings, selectedStoreId]);
     const pendingBookings = useMemo(() => storeBookings.filter((b) => b.status !== "COMPLETED"), [storeBookings]);
+    const storeCampaigns = useMemo(() => campaigns.filter((c) => c.storeId === selectedStoreId), [campaigns, selectedStoreId]);
+
+    const isWithin7Days = useMemo(() => {
+        if (!selectedStore?.createdAt) return false;
+        const createdDate = new Date(selectedStore.createdAt);
+        const diffTime = Date.now() - createdDate.getTime();
+        const diffDays = diffTime / (1000 * 60 * 60 * 24);
+        return diffDays <= 7;
+    }, [selectedStore]);
+
+    async function handleSendAnnouncement() {
+        if (!selectedStoreId || sendingAnnouncement) return;
+        setSendingAnnouncement(true);
+        try {
+            const response = await apiFetch(`/owner/stores/${selectedStoreId}/announce`, {
+                method: "POST",
+                includeAuth: true,
+            });
+
+            if (response.ok) {
+                toast.success("Announcement Broadcasted", "Your grand opening notification has been sent to all subscribed campus students!");
+                await load();
+            } else {
+                const err = await response.json();
+                toast.error("Announcement Failed", err.error || "Failed to broadcast announcement.");
+            }
+        } catch (err) {
+            console.error(err);
+            toast.error("Connection Error", "Failed to connect to the server.");
+        } finally {
+            setSendingAnnouncement(false);
+        }
+    }
 
     async function handleCreateItem(e: FormEvent<HTMLFormElement>) {
         e.preventDefault();
@@ -168,6 +216,69 @@ export default function OwnerDashboardClient() {
         }
     }
 
+    async function handleCreateCampaign(e: FormEvent<HTMLFormElement>) {
+        e.preventDefault();
+        const formData = new FormData(e.currentTarget);
+        
+        const code = formData.get("code")?.toString().trim() || undefined;
+        const discountType = formData.get("discountType") as "PERCENTAGE" | "FLAT";
+        const discountValue = parseFloat(formData.get("discountValue") as string);
+        const startDateStr = formData.get("startDate") as string;
+        const endDateStr = formData.get("endDate") as string;
+        const minOrderValue = parseFloat(formData.get("minOrderValue") as string) || 0;
+        
+        const globalLimitRaw = formData.get("globalLimit") as string;
+        const globalLimit = globalLimitRaw ? parseInt(globalLimitRaw, 10) : null;
+        
+        const perUserLimitRaw = formData.get("perUserLimit") as string;
+        const perUserLimit = perUserLimitRaw ? parseInt(perUserLimitRaw, 10) : null;
+
+        try {
+            setProcessingCampaignId("new");
+            await createOwnerCampaign({
+                storeId: selectedStoreId,
+                code,
+                discountType,
+                discountValue,
+                startDate: new Date(startDateStr).toISOString(),
+                endDate: new Date(endDateStr).toISOString(),
+                minOrderValue,
+                globalLimit,
+                perUserLimit
+            });
+            
+            e.currentTarget.reset();
+            setShowAddCampaign(false);
+            toast.success("Campaign created successfully!");
+            await load();
+        } catch (err) {
+            toast.error(err instanceof Error ? err.message : "Failed to create campaign");
+        } finally {
+            setProcessingCampaignId(null);
+        }
+    }
+
+    function triggerDeleteCampaign(id: string) {
+        setSelectedCampaignToDelete(id);
+        setDeleteCampaignModalOpen(true);
+    }
+
+    async function handleDeleteCampaign() {
+        if (!selectedCampaignToDelete) return;
+        setDeleteCampaignModalOpen(false);
+        try {
+            setProcessingCampaignId(selectedCampaignToDelete);
+            await deleteOwnerCampaign(selectedCampaignToDelete);
+            toast.success("Campaign deleted");
+            await load();
+        } catch (err) {
+            toast.error(err instanceof Error ? err.message : "Failed to delete campaign");
+        } finally {
+            setProcessingCampaignId(null);
+            setSelectedCampaignToDelete(null);
+        }
+    }
+
     // --- Store selector dropdown (shared across tabs) ---
     const storeSelector = inventory.length > 1 ? (
         <select
@@ -184,7 +295,7 @@ export default function OwnerDashboardClient() {
     if (state === "loading") {
         return (
             <OwnerPanelShell title="Loading..." description="Fetching store data." activeTab={activeTab}
-                onTabChange={(t) => { if (t === "inventory" || t === "bookings") setActiveTab(t); }}>
+                onTabChange={(t) => { if (t === "inventory" || t === "bookings" || t === "promotions") setActiveTab(t); }}>
                 <div className="space-y-4">
                     {[1, 2, 3].map((n) => (
                         <div key={n} className="h-14 rounded-xl bg-gray-100 animate-pulse" />
@@ -197,7 +308,7 @@ export default function OwnerDashboardClient() {
     if (state === "error") {
         return (
             <OwnerPanelShell title="Error" description="Unable to load store data." activeTab={activeTab}
-                onTabChange={(t) => { if (t === "inventory" || t === "bookings") setActiveTab(t); }}>
+                onTabChange={(t) => { if (t === "inventory" || t === "bookings" || t === "promotions") setActiveTab(t); }}>
                 <div className="rounded-xl border border-rose-100 bg-rose-50 p-8 text-center shadow-sm">
                     <p className="text-base font-semibold text-rose-700">{error}</p>
                     <button onClick={() => void load()} className="mt-4 rounded-full bg-rose-600 px-5 py-2 text-sm font-bold text-white hover:bg-rose-700 active:scale-95">Retry</button>
@@ -206,18 +317,32 @@ export default function OwnerDashboardClient() {
         );
     }
 
-    const title = activeTab === "inventory" ? "Inventory Catalog" : "Orders Dashboard";
+    const title = activeTab === "inventory" ? "Inventory Catalog" : activeTab === "bookings" ? "Orders Dashboard" : "Active Campaigns";
     const desc = activeTab === "inventory"
         ? `${storeItems.length} active menu items`
-        : `${pendingBookings.length} pending requests`;
+        : activeTab === "bookings"
+            ? `${pendingBookings.length} pending requests`
+            : `${storeCampaigns.length} configured sale campaigns`;
 
     return (
         <OwnerPanelShell
             title={title} description={desc}
-            actionLabel={showAddItem ? "Cancel Add" : "+ Add Item"}
+            actionLabel={
+                activeTab === "inventory"
+                    ? (showAddItem ? "Cancel Add" : "+ Add Item")
+                    : activeTab === "promotions"
+                        ? (showAddCampaign ? "Cancel Create" : "+ Create Campaign")
+                        : undefined
+            }
             activeTab={activeTab}
-            onTabChange={(t) => { if (t === "inventory" || t === "bookings") setActiveTab(t); }}
-            onActionClick={() => { setActiveTab("inventory"); setShowAddItem((p) => !p); }}
+            onTabChange={(t) => { if (t === "inventory" || t === "bookings" || t === "promotions") setActiveTab(t); }}
+            onActionClick={() => { 
+                if (activeTab === "inventory") {
+                    setShowAddItem((p) => !p); 
+                } else if (activeTab === "promotions") {
+                    setShowAddCampaign((p) => !p);
+                }
+            }}
         >
             <div className="space-y-6">
                 {/* Store selector + stats row */}
@@ -247,6 +372,36 @@ export default function OwnerDashboardClient() {
                         )}
                     </div>
                 </div>
+
+                {/* Grand Opening Announcement Banner */}
+                {selectedStore && !selectedStore.announcementSent && isWithin7Days && (
+                    <div className="rounded-2xl border border-orange-100 bg-gradient-to-r from-orange-50 to-rose-50/50 p-5 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+                        <div className="space-y-1 max-w-xl">
+                            <div className="flex items-center gap-2">
+                                <span className="text-[10px] font-black uppercase tracking-wider text-orange-600 bg-orange-100 px-2 py-0.5 rounded-full">
+                                    Grand Opening
+                                </span>
+                                <span className="text-xs font-semibold text-gray-500">
+                                    One-time choice available
+                                </span>
+                            </div>
+                            <h3 className="text-base font-extrabold text-gray-950">Announce your store launch to campus!</h3>
+                            <p className="text-xs text-gray-600 leading-relaxed font-medium">
+                                Send a beautiful one-time launch email to all subscribed campus students to let them know {selectedStore.name} is open for business at {selectedStore.hostel}.
+                            </p>
+                        </div>
+                        <button
+                            type="button"
+                            onClick={() => setAnnounceModalOpen(true)}
+                            className="inline-flex items-center justify-center gap-2 rounded-xl bg-orange-600 hover:bg-orange-700 text-white text-xs font-bold px-4 py-2.5 shadow-md shadow-orange-100/50 transition active:scale-95 shrink-0 self-start md:self-center"
+                        >
+                            <svg className="h-4.5 w-4.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                            </svg>
+                            <span>Send Launch Email</span>
+                        </button>
+                    </div>
+                )}
 
                 {/* INVENTORY TAB */}
                 {activeTab === "inventory" ? (
@@ -469,7 +624,7 @@ export default function OwnerDashboardClient() {
                             );
                         })()}
                     </div>
-                ) : (
+                ) : activeTab === "bookings" ? (
                     /* BOOKINGS TAB */
                     <div className="space-y-4">
                         {/* MOBILE STACKED VIEW */}
@@ -633,6 +788,197 @@ export default function OwnerDashboardClient() {
                             </table>
                         </div>
                     </div>
+                ) : null}
+
+                {/* PROMOTIONS TAB */}
+                {activeTab === "promotions" && (
+                    <div className="space-y-6">
+                        {/* Popup Modal for Create Campaign */}
+                        {showAddCampaign && (
+                            <div className="fixed inset-0 z-50 flex items-center justify-center bg-gray-950/60 backdrop-blur-sm p-4 animate-fade-in">
+                                <div className="w-full max-w-lg rounded-2xl border border-orange-100 bg-white p-6 shadow-xl space-y-4 max-h-[90vh] overflow-y-auto animate-slide-up">
+                                    <div className="flex items-center justify-between border-b border-gray-100 pb-3">
+                                        <div>
+                                            <span className="text-[10px] lg:text-xs font-bold uppercase tracking-[0.2em] text-orange-600">Marketing & Sales</span>
+                                            <h3 className="text-lg lg:text-xl font-black text-gray-900">Create Sale Campaign</h3>
+                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowAddCampaign(false)}
+                                            className="h-8 w-8 rounded-full border border-gray-200 text-gray-400 hover:text-gray-600 hover:bg-gray-50 flex items-center justify-center text-sm font-black transition"
+                                        >
+                                            ✕
+                                        </button>
+                                    </div>
+                                    
+                                    <form onSubmit={handleCreateCampaign} className="space-y-4">
+                                        <div className="grid gap-4 grid-cols-2">
+                                            <label className="block space-y-1.5 text-xs lg:text-sm font-bold text-gray-700 uppercase tracking-wider">
+                                                Coupon Code (Optional)
+                                                <input name="code" placeholder="e.g. SAVE20"
+                                                    className="w-full rounded-xl border border-gray-200 bg-white px-3.5 py-2.5 text-sm font-medium text-gray-900 outline-none focus:border-orange-300 focus:ring-1 focus:ring-orange-100 shadow-sm uppercase" />
+                                            </label>
+                                            <label className="block space-y-1.5 text-xs lg:text-sm font-bold text-gray-700 uppercase tracking-wider">
+                                                Min Order Value (₹)
+                                                <input name="minOrderValue" type="number" min="0" defaultValue="0" step="0.01" required
+                                                    className="w-full rounded-xl border border-gray-200 bg-white px-3.5 py-2.5 text-sm font-medium text-gray-900 outline-none focus:border-orange-300 focus:ring-1 focus:ring-orange-100 shadow-sm" />
+                                            </label>
+                                        </div>
+
+                                        <div className="grid gap-4 grid-cols-2">
+                                            <label className="block space-y-1.5 text-xs lg:text-sm font-bold text-gray-700 uppercase tracking-wider">
+                                                Discount Type
+                                                <select name="discountType" required
+                                                    className="w-full rounded-xl border border-gray-200 bg-white px-3.5 py-2.5 text-sm font-bold text-gray-800 outline-none focus:border-orange-300 shadow-sm">
+                                                    <option value="PERCENTAGE">PERCENTAGE (%)</option>
+                                                    <option value="FLAT">FLAT (₹)</option>
+                                                </select>
+                                            </label>
+                                            <label className="block space-y-1.5 text-xs lg:text-sm font-bold text-gray-700 uppercase tracking-wider">
+                                                Discount Value
+                                                <input name="discountValue" type="number" min="0.01" step="0.01" required placeholder="20"
+                                                    className="w-full rounded-xl border border-gray-200 bg-white px-3.5 py-2.5 text-sm font-medium text-gray-900 outline-none focus:border-orange-300 focus:ring-1 focus:ring-orange-100 shadow-sm" />
+                                            </label>
+                                        </div>
+
+                                        <div className="grid gap-4 grid-cols-2">
+                                            <label className="block space-y-1.5 text-xs lg:text-sm font-bold text-gray-700 uppercase tracking-wider">
+                                                Start Date & Time
+                                                <input name="startDate" type="datetime-local" required
+                                                    className="w-full rounded-xl border border-gray-200 bg-white px-3.5 py-2.5 text-sm font-medium text-gray-900 outline-none focus:border-orange-300 focus:ring-1 focus:ring-orange-100 shadow-sm" />
+                                            </label>
+                                            <label className="block space-y-1.5 text-xs lg:text-sm font-bold text-gray-700 uppercase tracking-wider">
+                                                End Date & Time
+                                                <input name="endDate" type="datetime-local" required
+                                                    className="w-full rounded-xl border border-gray-200 bg-white px-3.5 py-2.5 text-sm font-medium text-gray-900 outline-none focus:border-orange-300 focus:ring-1 focus:ring-orange-100 shadow-sm" />
+                                            </label>
+                                        </div>
+
+                                        <div className="grid gap-4 grid-cols-2">
+                                            <label className="block space-y-1.5 text-xs lg:text-sm font-bold text-gray-700 uppercase tracking-wider">
+                                                Global Limit (Uses)
+                                                <input name="globalLimit" type="number" min="1" placeholder="Unlimited"
+                                                    className="w-full rounded-xl border border-gray-200 bg-white px-3.5 py-2.5 text-sm font-medium text-gray-900 outline-none focus:border-orange-300 focus:ring-1 focus:ring-orange-100 shadow-sm" />
+                                            </label>
+                                            <label className="block space-y-1.5 text-xs lg:text-sm font-bold text-gray-700 uppercase tracking-wider">
+                                                Per-User Limit (Uses)
+                                                <input name="perUserLimit" type="number" min="1" placeholder="Unlimited"
+                                                    className="w-full rounded-xl border border-gray-200 bg-white px-3.5 py-2.5 text-sm font-medium text-gray-900 outline-none focus:border-orange-300 focus:ring-1 focus:ring-orange-100 shadow-sm" />
+                                            </label>
+                                        </div>
+
+                                        <div className="flex justify-end gap-3 pt-3 border-t border-gray-100">
+                                            <button
+                                                type="button"
+                                                onClick={() => setShowAddCampaign(false)}
+                                                className="rounded-full bg-white border border-gray-200 text-gray-600 hover:bg-gray-50 px-5 py-2.5 text-sm font-bold transition active:scale-95 shadow-sm"
+                                            >
+                                                Cancel
+                                            </button>
+                                            <button
+                                                type="submit"
+                                                disabled={processingCampaignId === "new"}
+                                                className="rounded-full bg-orange-600 px-6 py-2.5 text-sm font-bold text-white hover:bg-orange-700 disabled:opacity-60 transition active:scale-95 shadow-sm"
+                                            >
+                                                {processingCampaignId === "new" ? "Creating..." : "Save Campaign"}
+                                            </button>
+                                        </div>
+                                    </form>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* MOBILE STACKED VIEW */}
+                        <div className="block md:hidden space-y-4">
+                            {storeCampaigns.length === 0 ? (
+                                <div className="rounded-xl border border-gray-150 bg-white p-8 text-center text-sm text-gray-400">No campaigns created yet.</div>
+                            ) : storeCampaigns.map((c) => (
+                                <div key={c.id} className="rounded-xl border border-gray-150 bg-white p-4 shadow-sm space-y-3">
+                                    <div className="flex items-center justify-between">
+                                        <span className="font-black text-orange-600 text-lg tracking-wide uppercase">{c.code}</span>
+                                        <span className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-bold ${
+                                            c.isActive 
+                                                ? "bg-emerald-50 text-emerald-700 border border-emerald-100" 
+                                                : "bg-rose-50 text-rose-700 border border-rose-100"
+                                        }`}>
+                                            {c.isActive ? "ACTIVE" : "INACTIVE"}
+                                        </span>
+                                    </div>
+
+                                    <div className="text-sm text-gray-600 border-t border-gray-50 pt-2 space-y-1">
+                                        <p className="font-bold text-gray-900">
+                                            Discount: <span className="text-orange-600 font-extrabold">{c.discountType === "PERCENTAGE" ? `${c.discountValue}%` : money(c.discountValue)} Off</span>
+                                        </p>
+                                        <p className="text-xs text-gray-500">Min. Order: {money(c.minOrderValue)}</p>
+                                        <p className="text-xs text-gray-500">Uses: {c.usedCount} {c.globalLimit !== null ? `/ ${c.globalLimit}` : ""}</p>
+                                        <p className="text-xs text-gray-500">Per-User Limit: {c.perUserLimit ?? "Unlimited"}</p>
+                                        <p className="text-[11px] text-gray-400">Schedule: {new Date(c.startDate).toLocaleString()} - {new Date(c.endDate).toLocaleString()}</p>
+                                    </div>
+
+                                    <div className="flex gap-2 justify-end border-t border-gray-50 pt-2.5">
+                                        <button type="button" disabled={processingCampaignId === c.id}
+                                            onClick={() => triggerDeleteCampaign(c.id)}
+                                            className="w-full rounded-xl bg-gray-50 border border-gray-150 py-2 text-xs font-bold text-rose-600 text-center active:scale-95 transition shadow-sm hover:bg-rose-50">
+                                            Delete Campaign
+                                        </button>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+
+                        {/* DESKTOP WIDE TABLE VIEW */}
+                        <div className="hidden md:block rounded-xl border border-gray-150 bg-white shadow-sm overflow-hidden overflow-x-auto">
+                            <table className="w-full text-left text-sm min-w-[850px]">
+                                <thead>
+                                    <tr className="border-b border-gray-100 bg-gray-50/80">
+                                        <th className="px-6 py-4 font-bold text-xs lg:text-sm uppercase tracking-wider text-gray-400">Coupon Code</th>
+                                        <th className="px-6 py-4 font-bold text-xs lg:text-sm uppercase tracking-wider text-gray-400">Discount</th>
+                                        <th className="px-6 py-4 font-bold text-xs lg:text-sm uppercase tracking-wider text-gray-400">Min Order</th>
+                                        <th className="px-6 py-4 font-bold text-xs lg:text-sm uppercase tracking-wider text-gray-400">Schedule</th>
+                                        <th className="px-6 py-4 font-bold text-xs lg:text-sm uppercase tracking-wider text-gray-400 text-center">Uses</th>
+                                        <th className="px-6 py-4 font-bold text-xs lg:text-sm uppercase tracking-wider text-gray-400 text-center">Status</th>
+                                        <th className="px-6 py-4 font-bold text-xs lg:text-sm uppercase tracking-wider text-gray-400 text-right">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-gray-50">
+                                    {storeCampaigns.map((c) => (
+                                        <tr key={c.id} className="hover:bg-orange-50/30 transition duration-150">
+                                            <td className="px-6 py-4 font-black text-orange-600 text-sm lg:text-base uppercase tracking-wider">{c.code}</td>
+                                            <td className="px-6 py-4 font-extrabold text-gray-900">
+                                                {c.discountType === "PERCENTAGE" ? `${c.discountValue}%` : money(c.discountValue)}
+                                            </td>
+                                            <td className="px-6 py-4 font-bold text-gray-700">{money(c.minOrderValue)}</td>
+                                            <td className="px-6 py-4 text-xs font-semibold text-gray-500">
+                                                <div>{new Date(c.startDate).toLocaleString()}</div>
+                                                <div className="text-[10px] text-gray-400">to {new Date(c.endDate).toLocaleString()}</div>
+                                            </td>
+                                            <td className="px-6 py-4 text-center font-bold text-gray-800">
+                                                {c.usedCount} <span className="text-gray-400 text-xs font-normal">/ {c.globalLimit ?? "∞"}</span>
+                                                {c.perUserLimit && <div className="text-[10px] text-gray-400 font-medium">({c.perUserLimit} per user)</div>}
+                                            </td>
+                                            <td className="px-6 py-4 text-center">
+                                                <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold ${
+                                                    c.isActive 
+                                                        ? "bg-emerald-50 text-emerald-700 border border-emerald-100" 
+                                                        : "bg-rose-50 text-rose-700 border border-rose-100"
+                                                }`}>
+                                                    <span className={`h-2 w-2 rounded-full ${c.isActive ? "bg-emerald-500" : "bg-rose-500"}`} />
+                                                    {c.isActive ? "Active" : "Inactive"}
+                                                </span>
+                                            </td>
+                                            <td className="px-6 py-4 text-right">
+                                                <button type="button" disabled={processingCampaignId === c.id}
+                                                    onClick={() => triggerDeleteCampaign(c.id)}
+                                                    className="rounded-xl bg-gray-50 border border-gray-150 px-3.5 py-2 text-xs font-bold text-rose-600 hover:bg-rose-50 transition active:scale-95 shadow-sm">
+                                                    Delete
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
                 )}
             </div>
 
@@ -651,6 +997,20 @@ export default function OwnerDashboardClient() {
             />
 
             <ConfirmationModal
+                isOpen={deleteCampaignModalOpen}
+                title="Delete Sale Campaign?"
+                message="Are you sure you want to delete this sale campaign? Active coupon codes from this campaign will be deactivated immediately."
+                confirmText="Delete Campaign"
+                cancelText="Keep Campaign"
+                type="danger"
+                onConfirm={handleDeleteCampaign}
+                onCancel={() => {
+                    setDeleteCampaignModalOpen(false);
+                    setSelectedCampaignToDelete(null);
+                }}
+            />
+
+            <ConfirmationModal
                 isOpen={cancelModalOpen}
                 title={cancelAction === "approve" ? "Approve Cancellation?" : "Reject Cancellation?"}
                 message={cancelAction === "approve" 
@@ -664,6 +1024,22 @@ export default function OwnerDashboardClient() {
                     setCancelModalOpen(false);
                     setCancelBookingId(null);
                     setCancelAction(null);
+                }}
+            />
+
+            <ConfirmationModal
+                isOpen={announceModalOpen}
+                title="Send Launch Announcement?"
+                message={`Are you sure you want to broadcast a Grand Opening email for ${selectedStore?.name || "your store"}? This email will be sent once to all subscribed campus students, and cannot be sent again.`}
+                confirmText={sendingAnnouncement ? "Sending..." : "Send Announcement"}
+                cancelText="Not Now"
+                type="info"
+                onConfirm={async () => {
+                    setAnnounceModalOpen(false);
+                    await handleSendAnnouncement();
+                }}
+                onCancel={() => {
+                    setAnnounceModalOpen(false);
                 }}
             />
         </OwnerPanelShell>

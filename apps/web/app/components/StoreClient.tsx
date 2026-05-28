@@ -20,6 +20,10 @@ export default function StoreClient({ store, items }: Props) {
     const [cart, setCart] = useState<CartLineItem[]>([]);
     const [checkoutLoading, setCheckoutLoading] = useState(false);
     const [showMobileCart, setShowMobileCart] = useState(false);
+    const [couponCode, setCouponCode] = useState("");
+    const [appliedCoupon, setAppliedCoupon] = useState<string | null>(null);
+    const [discountAmount, setDiscountAmount] = useState(0);
+    const [isValidatingCoupon, setIsValidatingCoupon] = useState(false);
 
     function requireAuthForCartAction() {
         const token = getToken();
@@ -228,6 +232,69 @@ export default function StoreClient({ store, items }: Props) {
         }
     }
 
+    async function validateCoupon() {
+        if (!couponCode.trim()) return;
+        try {
+            setIsValidatingCoupon(true);
+            const response = await apiFetch(`/checkout/${store.id}/validate-coupon`, {
+                method: "POST",
+                includeAuth: true,
+                body: { couponCode: couponCode.trim() },
+            });
+            const data = await response.json();
+            if (!response.ok) {
+                toast.error(data.error || "Invalid coupon code");
+                setDiscountAmount(0);
+                setAppliedCoupon(null);
+                return;
+            }
+            setDiscountAmount(data.discountAmount);
+            setAppliedCoupon(data.couponCode);
+            toast.success(`Coupon "${data.couponCode}" applied successfully!`);
+        } catch (err) {
+            console.error(err);
+            toast.error("Failed to validate coupon");
+        } finally {
+            setIsValidatingCoupon(false);
+        }
+    }
+
+    function removeCoupon() {
+        setAppliedCoupon(null);
+        setDiscountAmount(0);
+        setCouponCode("");
+        toast.info("Coupon removed.");
+    }
+
+    useEffect(() => {
+        if (appliedCoupon && cart.length > 0) {
+            const revalidate = async () => {
+                try {
+                    const response = await apiFetch(`/checkout/${store.id}/validate-coupon`, {
+                        method: "POST",
+                        includeAuth: true,
+                        body: { couponCode: appliedCoupon },
+                    });
+                    const data = await response.json();
+                    if (response.ok) {
+                        setDiscountAmount(data.discountAmount);
+                    } else {
+                        setAppliedCoupon(null);
+                        setDiscountAmount(0);
+                        toast.warning(`Coupon "${appliedCoupon}" is no longer applicable.`);
+                    }
+                } catch {
+                    setAppliedCoupon(null);
+                    setDiscountAmount(0);
+                }
+            };
+            revalidate();
+        } else if (cart.length === 0) {
+            setAppliedCoupon(null);
+            setDiscountAmount(0);
+        }
+    }, [cart, store.id, appliedCoupon]);
+
     async function placeBooking() {
         try {
             setCheckoutLoading(true);
@@ -242,6 +309,7 @@ export default function StoreClient({ store, items }: Props) {
             const response = await apiFetch(`/checkout/${store.id}`, {
                 method: "POST",
                 includeAuth: true,
+                body: appliedCoupon ? { couponCode: appliedCoupon } : undefined,
             });
 
             const data = await response.json();
@@ -253,6 +321,9 @@ export default function StoreClient({ store, items }: Props) {
 
             // Clear cart in UI so the checkout state updates immediately.
             setCart([]);
+            setAppliedCoupon(null);
+            setDiscountAmount(0);
+            setCouponCode("");
 
             toast.success("Booking placed successfully");
             window.dispatchEvent(new Event("munchies-booking-placed"));
@@ -391,35 +462,73 @@ export default function StoreClient({ store, items }: Props) {
                             </div>
 
                             <h3 className="mb-3 font-bold text-gray-950">Bill details</h3>
+                            
+                            {/* Coupon Input Area */}
+                            <div className="mb-6 rounded-2xl border border-orange-100 bg-orange-50/30 p-4">
+                                <h4 className="mb-2 text-xs font-bold uppercase tracking-wider text-orange-700">Apply Coupon</h4>
+                                {appliedCoupon ? (
+                                    <div className="flex items-center justify-between bg-white rounded-xl border border-emerald-200 px-3 py-2 shadow-sm animate-fade-in">
+                                        <div className="flex items-center gap-2">
+                                            <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+                                            <span className="font-bold text-sm text-gray-900 uppercase tracking-wide">{appliedCoupon}</span>
+                                            <span className="text-[10px] bg-emerald-50 text-emerald-700 font-extrabold px-1.5 py-0.5 rounded uppercase">SAVED</span>
+                                        </div>
+                                        <button type="button" onClick={removeCoupon} className="text-xs font-bold text-rose-500 hover:text-rose-700 active:scale-95 transition">
+                                            Remove
+                                        </button>
+                                    </div>
+                                ) : (
+                                    <div className="flex gap-2">
+                                        <input
+                                            type="text"
+                                            value={couponCode}
+                                            onChange={(e) => setCouponCode(e.target.value)}
+                                            placeholder="e.g. SAVE20"
+                                            className="flex-1 rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-semibold uppercase outline-none focus:border-orange-300 shadow-sm"
+                                        />
+                                        <button
+                                            type="button"
+                                            onClick={validateCoupon}
+                                            disabled={isValidatingCoupon || !couponCode.trim()}
+                                            className="rounded-xl bg-orange-600 hover:bg-orange-700 disabled:opacity-50 text-white px-4 py-2 text-xs font-bold active:scale-95 transition"
+                                        >
+                                            {isValidatingCoupon ? "..." : "Apply"}
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
+
                             <div className="mb-4 space-y-2 border-b border-gray-100 pb-4 text-sm">
                                 <div className="flex justify-between text-gray-600">
                                     <span>Item Total</span>
                                     <span>₹{total}</span>
                                 </div>
-                                <div className="flex justify-between text-green-600">
-                                    <span>Order savings</span>
-                                    <span>- ₹20</span>
-                                </div>
+                                {discountAmount > 0 && (
+                                    <div className="flex justify-between text-emerald-600 font-bold animate-fade-in">
+                                        <span>Coupon savings ({appliedCoupon})</span>
+                                        <span>- ₹{discountAmount}</span>
+                                    </div>
+                                )}
                             </div>
-
+ 
                             <div className="mb-6 flex items-center justify-between">
                                 <span className="text-lg font-bold text-gray-950">To pay</span>
-                                <span className="text-lg font-extrabold text-gray-950">₹{Math.max(total - 20, 0)}</span>
+                                <span className="text-lg font-extrabold text-gray-950">₹{Math.max(total - discountAmount, 0)}</span>
                             </div>
-
+ 
                             <div className="mb-6 flex items-start gap-3 rounded-2xl border border-orange-100 bg-orange-50 p-4">
                                 <p className="text-xs font-medium leading-relaxed text-red-800">
                                     <strong className="mb-1 block">Pickup reminder</strong>
                                     Please collect your order promptly after it’s accepted so it stays fresh and ready.
                                 </p>
                             </div>
-
+ 
                             {!getToken() && (
                                 <div className="mb-4 rounded-2xl border border-orange-100 bg-orange-50 p-4 text-sm font-medium text-orange-800">
                                     Sign in to save this cart and place your order.
                                 </div>
                             )}
-
+ 
                             <button
                                 type="button"
                                 onClick={placeBooking}
@@ -445,7 +554,7 @@ export default function StoreClient({ store, items }: Props) {
                     >
                         <div className="text-left">
                             <div className="text-sm font-black text-white">{totalItems} item{totalItems === 1 ? "" : "s"} added</div>
-                            <div className="text-xs text-orange-100 font-bold">To pay • ₹{Math.max(total - 20, 0)}</div>
+                            <div className="text-xs text-orange-100 font-bold">To pay • ₹{Math.max(total - discountAmount, 0)}</div>
                         </div>
 
                         <span className="flex items-center gap-1.5 font-bold text-sm bg-white/20 px-3 py-1.5 rounded-xl border border-white/10">
@@ -501,6 +610,40 @@ export default function StoreClient({ store, items }: Props) {
                                 ))}
                             </div>
 
+                            {/* Mobile Coupon Box */}
+                            <div className="rounded-2xl border border-orange-100 bg-orange-50/30 p-4">
+                                <h4 className="mb-2 text-xs font-bold uppercase tracking-wider text-orange-700">Apply Coupon</h4>
+                                {appliedCoupon ? (
+                                    <div className="flex items-center justify-between bg-white rounded-xl border border-emerald-200 px-3 py-2 shadow-sm animate-fade-in">
+                                        <div className="flex items-center gap-2">
+                                            <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+                                            <span className="font-bold text-sm text-gray-900 uppercase tracking-wide">{appliedCoupon}</span>
+                                        </div>
+                                        <button type="button" onClick={removeCoupon} className="text-xs font-bold text-rose-500 active:scale-95 transition">
+                                            Remove
+                                        </button>
+                                    </div>
+                                ) : (
+                                    <div className="flex gap-2">
+                                        <input
+                                            type="text"
+                                            value={couponCode}
+                                            onChange={(e) => setCouponCode(e.target.value)}
+                                            placeholder="Enter coupon code"
+                                            className="flex-1 rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs font-semibold uppercase outline-none focus:border-orange-300"
+                                        />
+                                        <button
+                                            type="button"
+                                            onClick={validateCoupon}
+                                            disabled={isValidatingCoupon || !couponCode.trim()}
+                                            className="rounded-xl bg-orange-600 text-white px-4 py-2 text-xs font-bold active:scale-95 transition"
+                                        >
+                                            {isValidatingCoupon ? "..." : "Apply"}
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
+
                             <div>
                                 <h4 className="mb-2 font-black text-gray-900 text-sm">Bill Details</h4>
                                 <div className="space-y-2 rounded-2xl border border-gray-100 bg-gray-50/50 p-4 text-sm font-semibold">
@@ -508,13 +651,15 @@ export default function StoreClient({ store, items }: Props) {
                                         <span>Item Total</span>
                                         <span>₹{total}</span>
                                     </div>
-                                    <div className="flex justify-between text-green-600">
-                                        <span>Order savings</span>
-                                        <span>- ₹20</span>
-                                    </div>
+                                    {discountAmount > 0 && (
+                                        <div className="flex justify-between text-emerald-600 font-bold animate-fade-in">
+                                            <span>Coupon savings ({appliedCoupon})</span>
+                                            <span>- ₹{discountAmount}</span>
+                                        </div>
+                                    )}
                                     <div className="flex justify-between border-t border-gray-100 pt-2 text-base font-black text-gray-950">
                                         <span>To Pay</span>
-                                        <span>₹{Math.max(total - 20, 0)}</span>
+                                        <span>₹{Math.max(total - discountAmount, 0)}</span>
                                     </div>
                                 </div>
                             </div>
@@ -544,7 +689,7 @@ export default function StoreClient({ store, items }: Props) {
                                 disabled={checkoutLoading}
                                 className="w-full rounded-2xl bg-gradient-to-r from-orange-500 to-rose-500 py-4 text-base font-black text-white shadow-lg shadow-orange-150 transition active:scale-95 disabled:cursor-not-allowed disabled:opacity-75"
                             >
-                                {checkoutLoading ? "Placing Booking..." : `Place Order • ₹${Math.max(total - 20, 0)}`}
+                                {checkoutLoading ? "Placing Booking..." : `Place Order • ₹${Math.max(total - discountAmount, 0)}`}
                             </button>
                         </div>
                     </div>

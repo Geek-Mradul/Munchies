@@ -150,6 +150,14 @@ export default function AuthStatusNav({ minimal }: AuthStatusNavProps) {
                             My Bookings
                         </Link>
 
+                        <Link
+                            href="/preferences"
+                            onClick={() => setIsOpen(false)}
+                            className="flex w-full items-center rounded-xl px-3 py-2 text-xs lg:text-sm font-bold text-gray-700 hover:bg-orange-50 hover:text-orange-700 transition"
+                        >
+                            Email Preferences
+                        </Link>
+
                         {user.role !== "USER" && (
                             <Link
                                 href={getDashboardPathForRole(user.role as "USER" | "STORE_OWNER" | "ADMIN")}

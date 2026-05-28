@@ -10,6 +10,7 @@ async function main() {
     await prisma.cartItem.deleteMany();
     await prisma.cart.deleteMany();
     await prisma.item.deleteMany();
+    await prisma.saleCampaign.deleteMany();
     await prisma.store.deleteMany();
     await prisma.storeOwnerRequest.deleteMany();
     await prisma.user.deleteMany();
@@ -313,6 +314,52 @@ async function main() {
                 imageUrl: "https://images.unsplash.com/photo-1601050690597-df056fb4ce78?auto=format&fit=crop&w=600&q=80",
                 stockQuantity: 18,
                 storeId: stores[5].id,
+            },
+        }),
+    ]);
+
+    console.log("Creating active sale campaigns...");
+    const seededCampaigns = await Promise.all([
+        prisma.saleCampaign.create({
+            data: {
+                storeId: stores[0].id, // Maggi Point
+                code: "SAVE20",
+                discountType: "PERCENTAGE",
+                discountValue: 20,
+                startDate: new Date(Date.now() - 24 * 60 * 60 * 1000), // Active since yesterday
+                endDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // Active for 30 days
+                minOrderValue: 50,
+                globalLimit: 100,
+                perUserLimit: 2,
+                isActive: true,
+            },
+        }),
+        prisma.saleCampaign.create({
+            data: {
+                storeId: stores[0].id, // Maggi Point
+                code: "FLAT15",
+                discountType: "FLAT",
+                discountValue: 15,
+                startDate: new Date(Date.now() - 24 * 60 * 60 * 1000),
+                endDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+                minOrderValue: 80,
+                globalLimit: 50,
+                perUserLimit: 1,
+                isActive: true,
+            },
+        }),
+        prisma.saleCampaign.create({
+            data: {
+                storeId: stores[2].id, // Bun & Bite
+                code: "BUNCHEAP",
+                discountType: "PERCENTAGE",
+                discountValue: 10,
+                startDate: new Date(Date.now() - 24 * 60 * 60 * 1000),
+                endDate: new Date(Date.now() + 15 * 24 * 60 * 60 * 1000),
+                minOrderValue: 40,
+                globalLimit: 200,
+                perUserLimit: 3,
+                isActive: true,
             },
         }),
     ]);
