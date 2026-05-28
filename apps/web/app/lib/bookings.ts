@@ -1,6 +1,6 @@
 import { apiFetch } from "./api";
 
-export type BookingStatus = "PLACED" | "ACCEPTED" | "READY" | "REJECTED" | "COMPLETED";
+export type BookingStatus = "PLACED" | "ACCEPTED" | "READY" | "REJECTED" | "COMPLETED" | "CANCEL_REQUESTED" | "CANCELLED";
 
 type BookingItem = {
     id: string;
@@ -82,4 +82,17 @@ export async function fetchOwnerBookings() {
     }
 
     return response.json() as Promise<OwnerBooking[]>;
+}
+
+export async function requestBookingCancellation(id: string) {
+    const response = await apiFetch(`/bookings/${id}/cancel-request`, {
+        method: "POST",
+        includeAuth: true,
+    });
+
+    if (!response.ok) {
+        throw new Error(await parseError(response, "Failed to submit cancellation request"));
+    }
+
+    return response.json();
 }

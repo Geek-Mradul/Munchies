@@ -247,7 +247,8 @@ export default function StoreClient({ store, items }: Props) {
             const data = await response.json();
 
             if (!response.ok) {
-                throw new Error(data.error || "Checkout failed");
+                toast.error(data.error || "Checkout failed");
+                return;
             }
 
             // Clear cart in UI so the checkout state updates immediately.

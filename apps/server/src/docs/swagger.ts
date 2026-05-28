@@ -3,7 +3,7 @@ const swaggerSpec = {
     info: {
         title: "Munchies API",
         version: "1.0.0",
-        description: "API documentation for the Munchies backend.",
+        description: "API documentation for the Munchies.",
     },
     servers: [
         {
@@ -36,7 +36,15 @@ const swaggerSpec = {
             },
             BookingStatus: {
                 type: "string",
-                enum: ["PLACED", "ACCEPTED", "READY", "REJECTED", "COMPLETED"],
+                enum: [
+                    "PLACED",
+                    "ACCEPTED",
+                    "READY",
+                    "REJECTED",
+                    "COMPLETED",
+                    "CANCEL_REQUESTED",
+                    "CANCELLED"
+                ],
             },
             User: {
                 type: "object",
@@ -45,6 +53,36 @@ const swaggerSpec = {
                     email: { type: "string", format: "email" },
                     firstName: { type: "string" },
                     role: { $ref: "#/components/schemas/Role" },
+                },
+            },
+            StoreBlock: {
+                type: "object",
+                properties: {
+                    id: { type: "string" },
+                    userId: { type: "string" },
+                    storeId: { type: "string" },
+                    store: {
+                        type: "object",
+                        properties: {
+                            id: { type: "string" },
+                            name: { type: "string" },
+                        },
+                    },
+                },
+            },
+            ManagedUser: {
+                type: "object",
+                properties: {
+                    id: { type: "string" },
+                    email: { type: "string", format: "email" },
+                    firstName: { type: "string" },
+                    role: { $ref: "#/components/schemas/Role" },
+                    warningsCount: { type: "number" },
+                    isBlocked: { type: "boolean" },
+                    storeBlocks: {
+                        type: "array",
+                        items: { $ref: "#/components/schemas/StoreBlock" },
+                    },
                 },
             },
             AuthResponse: {
@@ -459,6 +497,46 @@ const swaggerSpec = {
                 },
             },
         },
+        "/bookings/{id}/cancel-request": {
+            post: {
+                tags: ["Bookings"],
+                summary: "Request cancellation of a booking",
+                security: [{ bearerAuth: [] }],
+                parameters: [
+                    {
+                        in: "path",
+                        name: "id",
+                        required: true,
+                        schema: { type: "string" },
+                    },
+                ],
+                responses: {
+                    200: {
+                        description: "Cancellation request successfully submitted",
+                        content: {
+                            "application/json": {
+                                schema: {
+                                    type: "object",
+                                    properties: {
+                                        message: { type: "string" },
+                                        booking: { $ref: "#/components/schemas/BookingWithRelations" },
+                                    },
+                                },
+                            },
+                        },
+                    },
+                    400: {
+                        description: "Invalid booking status for cancellation",
+                    },
+                    403: {
+                        $ref: "#/components/responses/Forbidden",
+                    },
+                    404: {
+                        description: "Booking not found",
+                    },
+                },
+            },
+        },
         "/owner/bookings": {
             get: {
                 tags: ["Owner"],
@@ -507,6 +585,63 @@ const swaggerSpec = {
                 },
             },
         },
+        "/owner/bookings/{id}/cancel-respond": {
+            post: {
+                tags: ["Owner"],
+                summary: "Respond to a cancellation request",
+                security: [{ bearerAuth: [] }],
+                parameters: [
+                    {
+                        in: "path",
+                        name: "id",
+                        required: true,
+                        schema: { type: "string" },
+                    },
+                ],
+                requestBody: {
+                    required: true,
+                    content: {
+                        "application/json": {
+                            schema: {
+                                type: "object",
+                                required: ["action"],
+                                properties: {
+                                    action: {
+                                        type: "string",
+                                        enum: ["approve", "reject"],
+                                    },
+                                },
+                            },
+                        },
+                    },
+                },
+                responses: {
+                    200: {
+                        description: "Cancellation request processed",
+                        content: {
+                            "application/json": {
+                                schema: {
+                                    type: "object",
+                                    properties: {
+                                        message: { type: "string" },
+                                        booking: { $ref: "#/components/schemas/BookingWithRelations" },
+                                    },
+                                },
+                            },
+                        },
+                    },
+                    400: {
+                        description: "Invalid action or booking is not in CANCEL_REQUESTED status",
+                    },
+                    403: {
+                        $ref: "#/components/responses/Forbidden",
+                    },
+                    404: {
+                        description: "Booking not found",
+                    },
+                },
+            },
+        },
         "/owner/items": {
             get: {
                 tags: ["Owner"],
@@ -525,23 +660,40 @@ const swaggerSpec = {
                 requestBody: {
                     required: true,
                     content: {
-                        "application/json": {
+                        "multipart/form-data": {
                             schema: {
                                 type: "object",
-                                required: ["storeId", "name", "price", "imageUrl", "stockQuantity"],
+                                required: [
+                                    "storeId",
+                                    "name",
+                                    "price",
+                                    "stockQuantity",
+                                    "image"
+                                ],
                                 properties: {
                                     storeId: { type: "string" },
                                     name: { type: "string" },
                                     price: { type: "number" },
-                                    imageUrl: { type: "string" },
                                     stockQuantity: { type: "number" },
+                                    image: {
+                                        type: "string",
+                                        format: "binary",
+                                        description: "Item image file upload",
+                                    },
                                 },
                             },
                         },
                     },
                 },
                 responses: {
-                    200: { description: "Created item" },
+                    200: {
+                        description: "Created item",
+                        content: {
+                            "application/json": {
+                                schema: { $ref: "#/components/schemas/Item" },
+                            },
+                        },
+                    },
                 },
             },
         },
@@ -558,8 +710,34 @@ const swaggerSpec = {
                         schema: { type: "string" },
                     },
                 ],
+                requestBody: {
+                    content: {
+                        "multipart/form-data": {
+                            schema: {
+                                type: "object",
+                                properties: {
+                                    name: { type: "string" },
+                                    price: { type: "number" },
+                                    stockQuantity: { type: "number" },
+                                    image: {
+                                        type: "string",
+                                        format: "binary",
+                                        description: "Optional new item image file upload",
+                                    },
+                                },
+                            },
+                        },
+                    },
+                },
                 responses: {
-                    200: { description: "Updated item" },
+                    200: {
+                        description: "Updated item",
+                        content: {
+                            "application/json": {
+                                schema: { $ref: "#/components/schemas/Item" },
+                            },
+                        },
+                    },
                 },
             },
             delete: {
@@ -632,6 +810,153 @@ const swaggerSpec = {
                 ],
                 responses: {
                     200: { description: "Request rejected" },
+                },
+            },
+        },
+        "/admin/users": {
+            get: {
+                tags: ["Admin"],
+                summary: "List all registered non-admin users",
+                security: [{ bearerAuth: [] }],
+                responses: {
+                    200: {
+                        description: "List of users with block statistics and store blocks details",
+                        content: {
+                            "application/json": {
+                                schema: {
+                                    type: "array",
+                                    items: { $ref: "#/components/schemas/ManagedUser" },
+                                },
+                            },
+                        },
+                    },
+                    401: {
+                        $ref: "#/components/responses/Unauthorized",
+                    },
+                    403: {
+                        $ref: "#/components/responses/Forbidden",
+                    },
+                },
+            },
+        },
+        "/admin/users/{id}/block": {
+            post: {
+                tags: ["Admin"],
+                summary: "Enforce or lift a global block on a user",
+                security: [{ bearerAuth: [] }],
+                parameters: [
+                    {
+                        in: "path",
+                        name: "id",
+                        required: true,
+                        schema: { type: "string" },
+                    },
+                ],
+                requestBody: {
+                    required: true,
+                    content: {
+                        "application/json": {
+                            schema: {
+                                type: "object",
+                                required: ["isBlocked"],
+                                properties: {
+                                    isBlocked: { type: "boolean" },
+                                },
+                            },
+                        },
+                    },
+                },
+                responses: {
+                    200: {
+                        description: "Global block status updated",
+                    },
+                    400: {
+                        description: "Parameter isBlocked must be a boolean",
+                    },
+                    401: {
+                        $ref: "#/components/responses/Unauthorized",
+                    },
+                    403: {
+                        $ref: "#/components/responses/Forbidden",
+                    },
+                },
+            },
+        },
+        "/admin/users/{id}/store-block": {
+            post: {
+                tags: ["Admin"],
+                summary: "Enforce or lift a store-specific block on a user",
+                security: [{ bearerAuth: [] }],
+                parameters: [
+                    {
+                        in: "path",
+                        name: "id",
+                        required: true,
+                        schema: { type: "string" },
+                    },
+                ],
+                requestBody: {
+                    required: true,
+                    content: {
+                        "application/json": {
+                            schema: {
+                                type: "object",
+                                required: ["storeId", "isBlocked"],
+                                properties: {
+                                    storeId: { type: "string" },
+                                    isBlocked: { type: "boolean" },
+                                },
+                            },
+                        },
+                    },
+                },
+                responses: {
+                    200: {
+                        description: "Store block status updated successfully",
+                    },
+                    400: {
+                        description: "storeId is required or parameter isBlocked must be a boolean",
+                    },
+                    401: {
+                        $ref: "#/components/responses/Unauthorized",
+                    },
+                    403: {
+                        $ref: "#/components/responses/Forbidden",
+                    },
+                },
+            },
+        },
+        "/admin/stores": {
+            get: {
+                tags: ["Admin"],
+                summary: "List all stores with simplified location details for management",
+                security: [{ bearerAuth: [] }],
+                responses: {
+                    200: {
+                        description: "List of stores",
+                        content: {
+                            "application/json": {
+                                schema: {
+                                    type: "array",
+                                    items: {
+                                        type: "object",
+                                        properties: {
+                                            id: { type: "string" },
+                                            name: { type: "string" },
+                                            hostel: { type: "string" },
+                                            roomNumber: { type: "string" },
+                                        },
+                                    },
+                                },
+                            },
+                        },
+                    },
+                    401: {
+                        $ref: "#/components/responses/Unauthorized",
+                    },
+                    403: {
+                        $ref: "#/components/responses/Forbidden",
+                    },
                 },
             },
         },

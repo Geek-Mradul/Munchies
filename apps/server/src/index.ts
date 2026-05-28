@@ -17,6 +17,7 @@ import checkoutRoutes from "./routes/checkout";
 import bookingsRoutes from "./routes/bookings";
 import storeOwnerRequestRoutes from "./routes/storeOwnerRequest";
 import adminRoutes from "./routes/admin";
+import { startScheduler } from "./lib/scheduler";
 
 import {
     requireAuth,
@@ -202,4 +203,5 @@ app.get(
 
 app.listen(4000, async () => {
     console.log("API running on port 4000");
+    startScheduler();
 });

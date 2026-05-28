@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 
 import AdminPanelShell from "./AdminPanelShell";
 import AdminStoreOwnerRequestsClient from "./AdminStoreOwnerRequestsClient";
+import AdminUsersManagementClient from "./AdminUsersManagementClient";
 import { apiFetch } from "../lib/api";
 import { useToast } from "./Toast";
 
@@ -47,6 +48,7 @@ export default function AdminAccessClient() {
     const [isAdmin, setIsAdmin] = useState(false);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [activeTab, setActiveTab] = useState("approvals");
 
     useEffect(() => {
         const syncRole = () => {
@@ -112,12 +114,23 @@ export default function AdminAccessClient() {
     }
 
     if (isAdmin) {
+        const shellTitle = activeTab === "approvals" ? "Store Approvals" : "User Management";
+        const shellDesc = activeTab === "approvals" 
+            ? "Review seller applications." 
+            : "Manage user warnings, global checkout suspensions, and store-specific blocks.";
+
         return (
             <AdminPanelShell
-                title="Store Approvals"
-                description="Review seller applications."
+                title={shellTitle}
+                description={shellDesc}
+                activeTab={activeTab}
+                setActiveTab={setActiveTab}
             >
-                <AdminStoreOwnerRequestsClient />
+                {activeTab === "approvals" ? (
+                    <AdminStoreOwnerRequestsClient />
+                ) : (
+                    <AdminUsersManagementClient />
+                )}
             </AdminPanelShell>
         );
     }

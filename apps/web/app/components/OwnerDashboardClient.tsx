@@ -6,10 +6,11 @@ import { getToken } from "../lib/auth";
 import { BookingStatus, type OwnerBooking } from "../lib/bookings";
 import {
     createOwnerItem, deleteOwnerItem, fetchOwnerBookings, fetchOwnerInventory,
-    updateOwnerBookingStatus, updateOwnerItem, type OwnerInventoryStore,
+    updateOwnerBookingStatus, updateOwnerItem, respondToBookingCancellation, type OwnerInventoryStore,
 } from "../lib/owner";
 import { useToast } from "./Toast";
 import OwnerPanelShell from "./OwnerPanelShell";
+import ConfirmationModal from "./ConfirmationModal";
 
 type LoadingState = "loading" | "ready" | "error";
 const LOW_STOCK = 5;
@@ -48,6 +49,14 @@ export default function OwnerDashboardClient() {
     const [activeTab, setActiveTab] = useState<"inventory" | "bookings">("inventory");
     const [showAddItem, setShowAddItem] = useState(false);
     const [selectedStoreId, setSelectedStoreId] = useState<string>("");
+
+    // Custom Confirmation Modals States
+    const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+    const [selectedItemIdToDelete, setSelectedItemIdToDelete] = useState<string | null>(null);
+
+    const [cancelModalOpen, setCancelModalOpen] = useState(false);
+    const [cancelBookingId, setCancelBookingId] = useState<string | null>(null);
+    const [cancelAction, setCancelAction] = useState<"approve" | "reject" | null>(null);
 
     async function load() {
         try {
@@ -107,15 +116,24 @@ export default function OwnerDashboardClient() {
         finally { setProcessingItemId(null); }
     }
 
-    async function handleDeleteItem(id: string) {
-        if (!window.confirm("Delete this item? This cannot be undone.")) return;
+    function triggerDeleteItem(id: string) {
+        setSelectedItemIdToDelete(id);
+        setDeleteModalOpen(true);
+    }
+
+    async function handleDeleteItem() {
+        if (!selectedItemIdToDelete) return;
+        setDeleteModalOpen(false);
         try {
-            setProcessingItemId(id);
-            await deleteOwnerItem(id);
+            setProcessingItemId(selectedItemIdToDelete);
+            await deleteOwnerItem(selectedItemIdToDelete);
             toast.success("Item removed");
             await load();
         } catch (err) { toast.error(err instanceof Error ? err.message : "Failed to delete item"); }
-        finally { setProcessingItemId(null); }
+        finally {
+            setProcessingItemId(null);
+            setSelectedItemIdToDelete(null);
+        }
     }
 
     async function handleBookingStatus(id: string, status: BookingStatus) {
@@ -126,6 +144,28 @@ export default function OwnerDashboardClient() {
             await load();
         } catch (err) { toast.error(err instanceof Error ? err.message : "Failed to update status"); }
         finally { setProcessingBookingId(null); }
+    }
+
+    function triggerCancelResponse(id: string, action: "approve" | "reject") {
+        setCancelBookingId(id);
+        setCancelAction(action);
+        setCancelModalOpen(true);
+    }
+
+    async function handleCancelResponse() {
+        if (!cancelBookingId || !cancelAction) return;
+        setCancelModalOpen(false);
+        try {
+            setProcessingBookingId(cancelBookingId);
+            await respondToBookingCancellation(cancelBookingId, cancelAction);
+            toast.success(`Cancellation request ${cancelAction}ed`);
+            await load();
+        } catch (err) { toast.error(err instanceof Error ? err.message : "Failed to respond to cancellation"); }
+        finally {
+            setProcessingBookingId(null);
+            setCancelBookingId(null);
+            setCancelAction(null);
+        }
     }
 
     // --- Store selector dropdown (shared across tabs) ---
@@ -306,7 +346,7 @@ export default function OwnerDashboardClient() {
                                             {editingItemId === item.id ? "Close" : "Edit"}
                                         </button>
                                         <button type="button" disabled={processingItemId === item.id}
-                                            onClick={() => handleDeleteItem(item.id)}
+                                            onClick={() => triggerDeleteItem(item.id)}
                                             className="flex-1 rounded-xl bg-gray-50 border border-gray-150 py-2.5 text-xs font-bold text-gray-700 text-center active:scale-95 transition shadow-sm hover:bg-rose-50 hover:text-rose-700">
                                             Delete
                                         </button>
@@ -353,7 +393,7 @@ export default function OwnerDashboardClient() {
                                                         {editingItemId === item.id ? "Close" : "Edit"}
                                                     </button>
                                                     <button type="button" disabled={processingItemId === item.id}
-                                                        onClick={() => handleDeleteItem(item.id)}
+                                                        onClick={() => triggerDeleteItem(item.id)}
                                                         className="rounded-xl bg-gray-50 border border-gray-150 px-3.5 py-2 text-xs font-bold text-gray-700 hover:bg-rose-50 hover:text-rose-700 transition active:scale-95 shadow-sm">
                                                         Delete
                                                     </button>
@@ -443,10 +483,13 @@ export default function OwnerDashboardClient() {
                                         <div className="flex items-center justify-between">
                                             <span className="font-black text-orange-600 text-lg">Order #{b.orderNumber || b.id.slice(0, 6).toUpperCase()}</span>
                                             <span className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-bold ${b.status === "PLACED" ? "bg-amber-50 text-amber-700 border border-amber-100"
-                                                : b.status === "ACCEPTED" ? "bg-emerald-50 text-emerald-700 border border-emerald-100"
-                                                    : b.status === "REJECTED" ? "bg-rose-50 text-rose-700 border border-rose-100"
-                                                        : "bg-gray-100 text-gray-600"
-                                                }`}>{b.status}</span>
+                                                : b.status === "ACCEPTED" ? "bg-sky-50 text-sky-700 border border-sky-100"
+                                                    : b.status === "READY" ? "bg-cyan-50 text-cyan-700 border border-cyan-100"
+                                                        : b.status === "REJECTED" ? "bg-rose-50 text-rose-700 border border-rose-100"
+                                                            : b.status === "CANCEL_REQUESTED" ? "bg-orange-50 text-orange-700 border border-orange-100 animate-pulse"
+                                                                : b.status === "CANCELLED" ? "bg-slate-100 text-slate-600 border border-slate-200"
+                                                                    : "bg-gray-100 text-gray-600"
+                                                }`}>{b.status === "CANCEL_REQUESTED" ? "CANCEL REQUESTED" : b.status}</span>
                                         </div>
 
                                         <div className="text-sm text-gray-600 border-t border-gray-50 pt-2">
@@ -463,7 +506,22 @@ export default function OwnerDashboardClient() {
                                             <p className="text-right font-black text-gray-950 text-sm lg:text-base mt-1">Total: {money(b.totalAmount)}</p>
                                         </div>
 
-                                        {acts.length > 0 && (
+                                        {b.status === "CANCEL_REQUESTED" && (
+                                            <div className="flex gap-2 pt-1">
+                                                <button type="button" disabled={processingBookingId === b.id}
+                                                    onClick={() => triggerCancelResponse(b.id, "approve")}
+                                                    className="flex-1 rounded-xl py-2.5 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 transition active:scale-95 disabled:opacity-60 shadow-sm text-center">
+                                                    Approve
+                                                </button>
+                                                <button type="button" disabled={processingBookingId === b.id}
+                                                    onClick={() => triggerCancelResponse(b.id, "reject")}
+                                                    className="flex-1 rounded-xl py-2.5 text-xs font-bold text-white bg-slate-600 hover:bg-slate-700 transition active:scale-95 disabled:opacity-60 shadow-sm text-center">
+                                                    Reject Request
+                                                </button>
+                                            </div>
+                                        )}
+
+                                        {acts.length > 0 && b.status !== "CANCEL_REQUESTED" && (
                                             <div className="flex gap-2 pt-1">
                                                 {acts.map((s) => (
                                                     <button key={s} type="button" disabled={processingBookingId === b.id}
@@ -530,25 +588,42 @@ export default function OwnerDashboardClient() {
                                                         }`}>
                                                         {b.status === "ACCEPTED" ? "Preparing"
                                                             : b.status === "READY" ? "Ready"
-                                                                : b.status}
+                                                                : b.status === "CANCEL_REQUESTED" ? "Cancellation Requested"
+                                                                    : b.status === "CANCELLED" ? "Cancelled"
+                                                                        : b.status}
                                                     </span>
                                                 </td>
                                                 <td className="px-6 py-4 text-right">
                                                     <div className="flex justify-end gap-2">
-                                                        {acts.map((s) => (
-                                                            <button key={s} type="button" disabled={processingBookingId === b.id}
-                                                                onClick={() => handleBookingStatus(b.id, s)}
-                                                                className={`rounded-xl px-4 py-2 text-xs font-bold text-white transition active:scale-95 disabled:opacity-60 shadow-sm ${s === "REJECTED" ? "bg-rose-600 hover:bg-rose-700"
-                                                                    : s === "READY" ? "bg-cyan-600 hover:bg-cyan-700"
-                                                                        : s === "COMPLETED" ? "bg-gray-900 hover:bg-gray-700"
-                                                                            : "bg-emerald-600 hover:bg-emerald-700"
-                                                                    }`}>
-                                                                {s === "ACCEPTED" ? "Accept"
-                                                                    : s === "READY" ? "Mark Ready"
-                                                                        : s === "REJECTED" ? (b.status === "ACCEPTED" ? "Cancel Order" : "Reject")
-                                                                            : "Complete"}
-                                                            </button>
-                                                        ))}
+                                                        {b.status === "CANCEL_REQUESTED" ? (
+                                                            <>
+                                                                <button type="button" disabled={processingBookingId === b.id}
+                                                                    onClick={() => triggerCancelResponse(b.id, "approve")}
+                                                                    className="rounded-xl px-4 py-2 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 transition active:scale-95 disabled:opacity-60 shadow-sm">
+                                                                    Approve
+                                                                </button>
+                                                                <button type="button" disabled={processingBookingId === b.id}
+                                                                    onClick={() => triggerCancelResponse(b.id, "reject")}
+                                                                    className="rounded-xl px-4 py-2 text-xs font-bold text-white bg-slate-600 hover:bg-slate-700 transition active:scale-95 disabled:opacity-60 shadow-sm">
+                                                                    Reject
+                                                                </button>
+                                                            </>
+                                                        ) : (
+                                                            acts.map((s) => (
+                                                                <button key={s} type="button" disabled={processingBookingId === b.id}
+                                                                    onClick={() => handleBookingStatus(b.id, s)}
+                                                                    className={`rounded-xl px-4 py-2 text-xs font-bold text-white transition active:scale-95 disabled:opacity-60 shadow-sm ${s === "REJECTED" ? "bg-rose-600 hover:bg-rose-700"
+                                                                        : s === "READY" ? "bg-cyan-600 hover:bg-cyan-700"
+                                                                            : s === "COMPLETED" ? "bg-gray-900 hover:bg-gray-700"
+                                                                                : "bg-emerald-600 hover:bg-emerald-700"
+                                                                        }`}>
+                                                                    {s === "ACCEPTED" ? "Accept"
+                                                                        : s === "READY" ? "Mark Ready"
+                                                                            : s === "REJECTED" ? (b.status === "ACCEPTED" ? "Cancel Order" : "Reject")
+                                                                                : "Complete"}
+                                                                </button>
+                                                            ))
+                                                        )}
                                                     </div>
                                                 </td>
                                             </tr>
@@ -560,6 +635,37 @@ export default function OwnerDashboardClient() {
                     </div>
                 )}
             </div>
+
+            <ConfirmationModal
+                isOpen={deleteModalOpen}
+                title="Delete Menu Item?"
+                message="Are you sure you want to delete this menu item? This action is permanent and cannot be undone."
+                confirmText="Delete Item"
+                cancelText="Keep Item"
+                type="danger"
+                onConfirm={handleDeleteItem}
+                onCancel={() => {
+                    setDeleteModalOpen(false);
+                    setSelectedItemIdToDelete(null);
+                }}
+            />
+
+            <ConfirmationModal
+                isOpen={cancelModalOpen}
+                title={cancelAction === "approve" ? "Approve Cancellation?" : "Reject Cancellation?"}
+                message={cancelAction === "approve" 
+                    ? "Are you sure you want to APPROVE this cancellation request? This will mark the booking as CANCELLED." 
+                    : "Are you sure you want to REJECT this cancellation request? This will restore the order to its active state."}
+                confirmText={cancelAction === "approve" ? "Yes, Approve" : "Yes, Reject"}
+                cancelText="No, Go Back"
+                type={cancelAction === "approve" ? "danger" : "warning"}
+                onConfirm={handleCancelResponse}
+                onCancel={() => {
+                    setCancelModalOpen(false);
+                    setCancelBookingId(null);
+                    setCancelAction(null);
+                }}
+            />
         </OwnerPanelShell>
     );
 }

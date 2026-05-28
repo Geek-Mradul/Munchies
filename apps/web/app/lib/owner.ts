@@ -121,3 +121,20 @@ export async function updateOwnerBookingStatus(
 
     return response.json() as Promise<{ message: string; booking: OwnerBooking }>;
 }
+
+export async function respondToBookingCancellation(
+    bookingId: string,
+    action: "approve" | "reject"
+) {
+    const response = await apiFetch(`/owner/bookings/${bookingId}/cancel-respond`, {
+        method: "POST",
+        includeAuth: true,
+        body: { action },
+    });
+
+    if (!response.ok) {
+        throw new Error(await parseError(response, `Failed to ${action} cancellation request`));
+    }
+
+    return response.json() as Promise<{ message: string; booking: OwnerBooking }>;
+}

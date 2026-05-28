@@ -3,16 +3,44 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { fetchMyBookings, type CustomerBooking } from "../lib/bookings";
+import { fetchMyBookings, requestBookingCancellation, type CustomerBooking } from "../lib/bookings";
 import { getToken } from "../lib/auth";
+import { useToast } from "./Toast";
+import ConfirmationModal from "./ConfirmationModal";
 
 type LoadingState = "loading" | "ready" | "error";
 
 export default function BookingsClient() {
     const router = useRouter();
+    const toast = useToast();
     const [state, setState] = useState<LoadingState>("loading");
     const [error, setError] = useState("");
     const [bookings, setBookings] = useState<CustomerBooking[]>([]);
+    const [submittingBookingId, setSubmittingBookingId] = useState<string | null>(null);
+    const [cancelModalOpen, setCancelModalOpen] = useState(false);
+    const [selectedBookingId, setSelectedBookingId] = useState<string | null>(null);
+
+    function triggerCancellation(bookingId: string) {
+        setSelectedBookingId(bookingId);
+        setCancelModalOpen(true);
+    }
+
+    async function handleRequestCancellation() {
+        if (!selectedBookingId) return;
+        setCancelModalOpen(false);
+        try {
+            setSubmittingBookingId(selectedBookingId);
+            await requestBookingCancellation(selectedBookingId);
+            toast.success("Cancellation request submitted");
+            const data = await fetchMyBookings();
+            setBookings(data);
+        } catch (err) {
+            toast.error(err instanceof Error ? err.message : "Failed to request cancellation");
+        } finally {
+            setSubmittingBookingId(null);
+            setSelectedBookingId(null);
+        }
+    }
 
     useEffect(() => {
         async function loadBookings() {
@@ -92,13 +120,17 @@ export default function BookingsClient() {
                                     : booking.status === "ACCEPTED" ? "bg-sky-50 text-sky-700 border border-sky-100"
                                         : booking.status === "READY" ? "bg-emerald-50 text-emerald-700 border border-emerald-100 animate-pulse"
                                             : booking.status === "REJECTED" ? "bg-rose-50 text-rose-700 border border-rose-100"
-                                                : "bg-gray-150 text-gray-700"
+                                                : booking.status === "CANCEL_REQUESTED" ? "bg-amber-50 text-amber-700 border border-amber-200 animate-pulse"
+                                                    : booking.status === "CANCELLED" ? "bg-slate-100 text-slate-600 border border-slate-200"
+                                                        : "bg-gray-150 text-gray-700"
                                 }`}>
                                 {booking.status === "PLACED" ? "Preparing / Pending"
                                     : booking.status === "ACCEPTED" ? "Preparing..."
                                         : booking.status === "READY" ? "Ready"
-                                            : booking.status === "REJECTED" ? "Cancelled"
-                                                : "Completed"}
+                                            : booking.status === "REJECTED" ? "Rejected"
+                                                : booking.status === "CANCEL_REQUESTED" ? "Cancellation Requested"
+                                                    : booking.status === "CANCELLED" ? "Cancelled"
+                                                        : "Completed"}
                             </span>
                             <p className="mt-2 text-sm font-bold text-gray-900">₹{booking.totalAmount.toFixed(2)}</p>
                         </div>
@@ -117,8 +149,35 @@ export default function BookingsClient() {
                             </div>
                         ))}
                     </div>
+
+                    {["PLACED", "ACCEPTED", "READY"].includes(booking.status) && (
+                        <div className="mt-4 flex justify-end border-t border-gray-100 pt-4">
+                            <button
+                                type="button"
+                                disabled={submittingBookingId === booking.id}
+                                onClick={() => triggerCancellation(booking.id)}
+                                className="rounded-full bg-rose-50 border border-rose-100 px-4 py-2 text-xs font-bold text-rose-600 hover:bg-rose-100 active:scale-95 transition disabled:opacity-60 shadow-sm"
+                            >
+                                {submittingBookingId === booking.id ? "Requesting..." : "Request Cancellation"}
+                            </button>
+                        </div>
+                    )}
                 </article>
             ))}
+
+            <ConfirmationModal
+                isOpen={cancelModalOpen}
+                title="Cancel Booking?"
+                message="Are you sure you want to request cancellation for this booking? The store owner will review and respond to your request."
+                confirmText="Yes, Request"
+                cancelText="No, Keep it"
+                type="warning"
+                onConfirm={handleRequestCancellation}
+                onCancel={() => {
+                    setCancelModalOpen(false);
+                    setSelectedBookingId(null);
+                }}
+            />
         </section>
     );
 }

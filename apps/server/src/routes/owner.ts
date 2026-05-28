@@ -5,6 +5,7 @@ import multer from "multer";
 import { BookingStatus } from "@prisma/client";
 import { prisma } from "../lib/prisma";
 import { requireAuth, requireRole, AuthRequest } from "../middleware/auth";
+import { sendEmail } from "../lib/email";
 
 const router = Router();
 
@@ -47,6 +48,8 @@ const bookingStatusTransitions: Record<
     READY: ["COMPLETED"],
     REJECTED: [],
     COMPLETED: [],
+    CANCEL_REQUESTED: ["CANCELLED", "PLACED", "ACCEPTED", "READY"],
+    CANCELLED: [],
 };
 
 router.get(
@@ -201,6 +204,7 @@ router.post(
                 },
                 data: {
                     status,
+                    ...(status === "READY" ? { readyAt: new Date() } : {}),
                 },
                 include: {
                     store: true,
@@ -413,6 +417,167 @@ router.delete(
 
             res.status(500).json({
                 error: "Failed to delete item",
+            });
+        }
+    }
+);
+
+// STORE OWNER RESPOND TO CANCELLATION REQUEST
+router.post(
+    "/bookings/:id/cancel-respond",
+    requireAuth,
+    requireRole("STORE_OWNER"),
+    async (req: AuthRequest, res: Response) => {
+        try {
+            const bookingId = String(req.params.id);
+            const { action } = req.body ?? {};
+
+            if (action !== "approve" && action !== "reject") {
+                return res.status(400).json({
+                    error: "Action must be either 'approve' or 'reject'",
+                });
+            }
+
+            const booking = await prisma.booking.findUnique({
+                where: { id: bookingId },
+                include: {
+                    store: true,
+                    user: {
+                        select: {
+                            id: true,
+                            firstName: true,
+                            email: true,
+                        },
+                    },
+                },
+            });
+
+            if (!booking) {
+                return res.status(404).json({
+                    error: "Booking not found",
+                });
+            }
+
+            if (booking.store.ownerId !== req.user!.userId) {
+                return res.status(403).json({
+                    error: "Unauthorized",
+                });
+            }
+
+            if (booking.status !== "CANCEL_REQUESTED") {
+                return res.status(400).json({
+                    error: "Booking is not in CANCEL_REQUESTED status",
+                });
+            }
+
+            let updatedBooking;
+
+            if (action === "approve") {
+                updatedBooking = await prisma.booking.update({
+                    where: { id: bookingId },
+                    data: {
+                        status: "CANCELLED",
+                    },
+                    include: {
+                        store: true,
+                        user: {
+                            select: {
+                                id: true,
+                                firstName: true,
+                                email: true,
+                            },
+                        },
+                        items: {
+                            include: {
+                                item: true,
+                            },
+                        },
+                    },
+                });
+
+                // Send email to customer notifying them of approval
+                const orderNumberText = booking.orderNumber || booking.id.slice(0, 8).toUpperCase();
+                sendEmail({
+                    to: booking.user.email,
+                    subject: `Cancellation Approved: Order #${orderNumberText}`,
+                    html: `
+                        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 25px; border: 1px solid #f0f0f0; border-radius: 16px; background-color: #fcfcfc;">
+                            <h2 style="color: #10b981; margin-top: 0; font-size: 22px; font-weight: 800; border-bottom: 2px solid #ecfdf5; padding-bottom: 12px;">Munchies Booking Cancelled</h2>
+                            <p style="font-size: 15px; color: #374151; line-height: 1.6;">Hello <strong>${booking.user.firstName}</strong>,</p>
+                            <p style="font-size: 15px; color: #374151; line-height: 1.6;">Your cancellation request for <strong>Order #${orderNumberText}</strong> at <strong>${booking.store.name}</strong> has been approved by the store owner.</p>
+                            
+                            <div style="background-color: #f0fdf4; border: 1px solid #a7f3d0; border-radius: 12px; padding: 18px; margin: 20px 0; text-align: center;">
+                                <span style="font-size: 16px; font-weight: bold; color: #065f46;">Order Cancelled Successfully</span>
+                            </div>
+
+                            <p style="font-size: 15px; color: #374151; line-height: 1.6;">The store owner has acknowledged and cancelled this booking. You will not be charged, and no food will be prepared.</p>
+                            
+                            <div style="margin-top: 30px; border-top: 1px solid #f3f4f6; padding-top: 15px; font-size: 12px; color: #9ca3af; text-align: center;">
+                                This is an automated notification from Munchies. Please do not reply directly to this email.
+                            </div>
+                        </div>
+                    `,
+                }).catch(err => console.error("[Nodemailer] Background send failed:", err));
+            } else {
+                const restoredStatus = booking.statusBeforeCancel || "ACCEPTED";
+                updatedBooking = await prisma.booking.update({
+                    where: { id: bookingId },
+                    data: {
+                        status: restoredStatus,
+                        statusBeforeCancel: null,
+                    },
+                    include: {
+                        store: true,
+                        user: {
+                            select: {
+                                id: true,
+                                firstName: true,
+                                email: true,
+                            },
+                        },
+                        items: {
+                            include: {
+                                item: true,
+                            },
+                        },
+                    },
+                });
+
+                // Send email to customer notifying them of rejection
+                const orderNumberText = booking.orderNumber || booking.id.slice(0, 8).toUpperCase();
+                sendEmail({
+                    to: booking.user.email,
+                    subject: `Cancellation Request Update: Order #${orderNumberText}`,
+                    html: `
+                        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 25px; border: 1px solid #f0f0f0; border-radius: 16px; background-color: #fffcfc;">
+                            <h2 style="color: #ea580c; margin-top: 0; font-size: 22px; font-weight: 800; border-bottom: 2px solid #fee2e2; padding-bottom: 12px;">Munchies Cancellation Request Update</h2>
+                            <p style="font-size: 15px; color: #374151; line-height: 1.6;">Hello <strong>${booking.user.firstName}</strong>,</p>
+                            <p style="font-size: 15px; color: #374151; line-height: 1.6;">Your cancellation request for <strong>Order #${orderNumberText}</strong> at <strong>${booking.store.name}</strong> was reviewed by the store owner and has been <strong>rejected</strong>.</p>
+                            
+                            <div style="background-color: #fff5f5; border: 1px solid #fecaca; border-radius: 12px; padding: 18px; margin: 20px 0; text-align: center;">
+                                <span style="font-size: 15px; font-weight: bold; color: #991b1b;">Cancellation Request Declined</span>
+                                <p style="margin: 6px 0 0 0; font-size: 14px; color: #7f1d1d;">Your order is being prepared and is currently in <strong style="text-transform: uppercase;">${restoredStatus}</strong> status.</p>
+                            </div>
+
+                            <p style="font-size: 15px; color: #374151; line-height: 1.6;">The store owner is proceeding with your order as scheduled. Please get ready to collect your munchies!</p>
+                            
+                            <div style="margin-top: 30px; border-top: 1px solid #f3f4f6; padding-top: 15px; font-size: 12px; color: #9ca3af; text-align: center;">
+                                This is an automated notification from Munchies. Please do not reply directly to this email.
+                            </div>
+                        </div>
+                    `,
+                }).catch(err => console.error("[Nodemailer] Background send failed:", err));
+            }
+
+            res.json({
+                message: `Cancellation request ${action}ed successfully`,
+                booking: updatedBooking,
+            });
+        } catch (error) {
+            console.error(error);
+
+            res.status(500).json({
+                error: "Failed to respond to cancellation request",
             });
         }
     }

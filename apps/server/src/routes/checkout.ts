@@ -36,6 +36,34 @@ router.post(
                 });
             }
 
+            // Check block status (both global and store-specific)
+            const user = await prisma.user.findUnique({
+                where: { id: req.user!.userId },
+                include: {
+                    storeBlocks: {
+                        where: { storeId }
+                    }
+                }
+            });
+
+            if (!user) {
+                return res.status(401).json({
+                    error: "User not found",
+                });
+            }
+
+            if (user.isBlocked) {
+                return res.status(403).json({
+                    error: "Your account is globally blocked from placing new orders due to uncollected orders or policy violations.",
+                });
+            }
+
+            if (user.storeBlocks.length > 0) {
+                return res.status(403).json({
+                    error: "You are blocked from placing orders at this specific store by administrator controls.",
+                });
+            }
+
             const cart =
                 await prisma.cart.findUnique({
                     where: {
