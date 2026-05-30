@@ -252,7 +252,7 @@ export default function AuthForm({ mode, scope }: AuthFormProps) {
                                     <p className="mt-2 text-sm leading-6 text-gray-600">{description}</p>
                                 </div>
 
-                                <form className="space-y-4" onSubmit={handleSubmit}>
+                                <form className="space-y-4" method="POST" onSubmit={handleSubmit}>
                                     {showFirstName && (
                                         <div>
                                             <label htmlFor="firstName" className="mb-2 block text-sm font-semibold text-gray-700">

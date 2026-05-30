@@ -6,6 +6,7 @@ import { BookingStatus } from "@prisma/client";
 import { prisma } from "../lib/prisma";
 import { requireAuth, requireRole, AuthRequest } from "../middleware/auth";
 import { sendEmail } from "../lib/email";
+import { memoryCache } from "../lib/cache";
 
 const router = Router();
 
@@ -286,6 +287,7 @@ router.post(
                 },
             });
 
+            memoryCache.invalidateStore(storeId);
             res.json(item);
         } catch (error) {
             console.error(error);
@@ -356,6 +358,7 @@ router.put(
                 },
             });
 
+            memoryCache.invalidateStore(item.storeId);
             res.json(updatedItem);
         } catch (error) {
             console.error(error);
@@ -409,6 +412,7 @@ router.delete(
                 },
             });
 
+            memoryCache.invalidateStore(item.storeId);
             res.json({
                 message: "Item deleted",
             });
@@ -1003,6 +1007,7 @@ router.post(
                 },
             });
 
+            memoryCache.invalidateStore(storeId);
             res.json({
                 message: "Launch announcement successfully sent to all campus subscribers",
                 store: updatedStore,
@@ -1011,6 +1016,242 @@ router.post(
             console.error(error);
             res.status(500).json({
                 error: "Failed to dispatch store announcement",
+            });
+        }
+    }
+);
+
+// GET STORE OWNER ANALYTICS
+router.get(
+    "/analytics",
+    requireAuth,
+    requireRole("STORE_OWNER"),
+    async (req: AuthRequest, res: Response) => {
+        try {
+            const { storeId } = req.query;
+
+            // If storeId is provided, verify it belongs to this owner
+            if (storeId) {
+                const store = await prisma.store.findFirst({
+                    where: {
+                        id: String(storeId),
+                        ownerId: req.user!.userId,
+                    },
+                });
+
+                if (!store) {
+                    return res.status(403).json({
+                        error: "Store not found or unauthorized",
+                    });
+                }
+            } else {
+                // If not provided, fetch first store of owner
+                const firstStore = await prisma.store.findFirst({
+                    where: { ownerId: req.user!.userId },
+                });
+
+                if (!firstStore) {
+                    return res.json({
+                        totalRevenue: 0,
+                        weeklyRevenue: 0,
+                        monthlyRevenue: 0,
+                        mostSoldItem: null,
+                        leastSoldItem: null,
+                        bookingStatistics: {
+                            PLACED: 0,
+                            ACCEPTED: 0,
+                            READY: 0,
+                            COMPLETED: 0,
+                            REJECTED: 0,
+                            CANCEL_REQUESTED: 0,
+                            CANCELLED: 0,
+                        },
+                        lowStockAlerts: [],
+                    });
+                }
+
+                // Redirect to firstStore's ID
+                return res.redirect(`/owner/analytics?storeId=${firstStore.id}`);
+            }
+
+            const targetStoreId = String(storeId);
+
+            // 1. Total revenue (sum of totalAmount for COMPLETED bookings)
+            const completedBookings = await prisma.booking.findMany({
+                where: {
+                    storeId: targetStoreId,
+                    status: "COMPLETED",
+                },
+                select: {
+                    totalAmount: true,
+                    createdAt: true,
+                },
+            });
+
+            const totalRevenue = completedBookings.reduce((sum, b) => sum + b.totalAmount, 0);
+
+            // 2. Weekly revenue (last 7 days completed bookings)
+            const sevenDaysAgo = new Date();
+            sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+            const weeklyRevenue = completedBookings
+                .filter((b) => new Date(b.createdAt) >= sevenDaysAgo)
+                .reduce((sum, b) => sum + b.totalAmount, 0);
+
+            // 3. Monthly revenue (last 30 days completed bookings)
+            const thirtyDaysAgo = new Date();
+            thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+            const monthlyRevenue = completedBookings
+                .filter((b) => new Date(b.createdAt) >= thirtyDaysAgo)
+                .reduce((sum, b) => sum + b.totalAmount, 0);
+
+            // 4. Most sold and least sold items
+            const allStoreItems = await prisma.item.findMany({
+                where: { storeId: targetStoreId },
+                select: { id: true, name: true, price: true, stockQuantity: true },
+            });
+
+            const bookingItems = await prisma.bookingItem.findMany({
+                where: {
+                    booking: {
+                        storeId: targetStoreId,
+                        status: "COMPLETED",
+                    },
+                },
+                select: {
+                    itemId: true,
+                    quantity: true,
+                },
+            });
+
+            const salesMap: Record<string, number> = {};
+            allStoreItems.forEach((item) => {
+                salesMap[item.id] = 0;
+            });
+            bookingItems.forEach((bi) => {
+                if (salesMap[bi.itemId] !== undefined) {
+                    salesMap[bi.itemId] += bi.quantity;
+                }
+            });
+
+            let mostSoldItem: any = null;
+            let leastSoldItem: any = null;
+            let maxSales = -1;
+            let minSales = Infinity;
+
+            allStoreItems.forEach((item) => {
+                const sales = salesMap[item.id] || 0;
+                if (sales > maxSales) {
+                    maxSales = sales;
+                    mostSoldItem = { id: item.id, name: item.name, quantity: sales, price: item.price };
+                }
+                if (sales < minSales) {
+                    minSales = sales;
+                    leastSoldItem = { id: item.id, name: item.name, quantity: sales, price: item.price };
+                }
+            });
+
+            if (maxSales <= 0) {
+                mostSoldItem = null;
+            }
+            if (allStoreItems.length === 0) {
+                leastSoldItem = null;
+            }
+
+            // 5. Booking statistics
+            const bookingStatsGroup = await prisma.booking.groupBy({
+                by: ["status"],
+                where: { storeId: targetStoreId },
+                _count: {
+                    _all: true,
+                },
+            });
+
+            const bookingStatistics: Record<string, number> = {
+                PLACED: 0,
+                ACCEPTED: 0,
+                READY: 0,
+                COMPLETED: 0,
+                REJECTED: 0,
+                CANCEL_REQUESTED: 0,
+                CANCELLED: 0,
+            };
+            bookingStatsGroup.forEach((stat) => {
+                bookingStatistics[stat.status] = stat._count._all;
+            });
+
+            // 6. Low stock alerts (<= 5 units)
+            const lowStockAlerts = allStoreItems
+                .filter((item) => item.stockQuantity <= 5)
+                .map((item) => ({
+                    id: item.id,
+                    name: item.name,
+                    stockQuantity: item.stockQuantity,
+                }));
+
+            res.json({
+                totalRevenue,
+                weeklyRevenue,
+                monthlyRevenue,
+                mostSoldItem,
+                leastSoldItem,
+                bookingStatistics,
+                lowStockAlerts,
+            });
+        } catch (error) {
+            console.error(error);
+            res.status(500).json({
+                error: "Failed to generate store analytics",
+            });
+        }
+    }
+);
+
+// UPDATE STORE SETTINGS (NAME AND TAGLINE)
+router.patch(
+    "/stores/:id",
+    requireAuth,
+    requireRole("STORE_OWNER"),
+    async (req: AuthRequest, res: Response) => {
+        try {
+            const { id } = req.params;
+            const { name, tagline } = req.body ?? {};
+
+            if (!name || typeof name !== "string" || !name.trim()) {
+                return res.status(400).json({ error: "Store name is required" });
+            }
+
+            // Verify store belongs to this owner
+            const store = await prisma.store.findFirst({
+                where: {
+                    id,
+                    ownerId: req.user!.userId,
+                },
+            });
+
+            if (!store) {
+                return res.status(404).json({ error: "Store not found or unauthorized access" });
+            }
+
+            const updatedStore = await prisma.store.update({
+                where: { id },
+                data: {
+                    name: name.trim(),
+                    tagline: tagline ? tagline.trim() : null,
+                },
+            });
+
+            // Evict store details and listing caches
+            memoryCache.invalidateStore(id);
+            memoryCache.invalidateAllStores();
+
+            res.json({
+                message: "Store settings updated successfully",
+                store: updatedStore,
+            });
+        } catch (error) {
+            console.error(error);
+            res.status(500).json({
+                error: "Failed to update store settings",
             });
         }
     }

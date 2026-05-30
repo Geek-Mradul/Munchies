@@ -151,6 +151,14 @@ export default function AuthStatusNav({ minimal }: AuthStatusNavProps) {
                         </Link>
 
                         <Link
+                            href="/user"
+                            onClick={() => setIsOpen(false)}
+                            className="flex w-full items-center rounded-xl px-3 py-2 text-xs lg:text-sm font-bold text-gray-700 hover:bg-orange-50 hover:text-orange-700 transition"
+                        >
+                            Spending Analytics
+                        </Link>
+
+                        <Link
                             href="/preferences"
                             onClick={() => setIsOpen(false)}
                             className="flex w-full items-center rounded-xl px-3 py-2 text-xs lg:text-sm font-bold text-gray-700 hover:bg-orange-50 hover:text-orange-700 transition"

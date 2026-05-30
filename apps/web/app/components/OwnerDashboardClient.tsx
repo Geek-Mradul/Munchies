@@ -8,7 +8,7 @@ import { BookingStatus, type OwnerBooking } from "../lib/bookings";
 import {
     createOwnerItem, deleteOwnerItem, fetchOwnerBookings, fetchOwnerInventory,
     updateOwnerBookingStatus, updateOwnerItem, respondToBookingCancellation, type OwnerInventoryStore,
-    fetchOwnerCampaigns, createOwnerCampaign, deleteOwnerCampaign, type OwnerCampaign,
+    fetchOwnerCampaigns, createOwnerCampaign, deleteOwnerCampaign, type OwnerCampaign, updateStoreSettings,
 } from "../lib/owner";
 import { useToast } from "./Toast";
 import OwnerPanelShell from "./OwnerPanelShell";
@@ -50,7 +50,17 @@ export default function OwnerDashboardClient() {
     const [processingBookingId, setProcessingBookingId] = useState<string | null>(null);
     const [processingCampaignId, setProcessingCampaignId] = useState<string | null>(null);
     const [editingItemId, setEditingItemId] = useState<string | null>(null);
-    const [activeTab, setActiveTab] = useState<"inventory" | "bookings" | "promotions">("inventory");
+    const [activeTab, setActiveTab] = useState<"inventory" | "bookings" | "promotions" | "analytics" | "settings">("inventory");
+    const [analytics, setAnalytics] = useState<{
+        totalRevenue: number;
+        weeklyRevenue: number;
+        monthlyRevenue: number;
+        mostSoldItem: { id: string; name: string; quantity: number; price: number } | null;
+        leastSoldItem: { id: string; name: string; quantity: number; price: number } | null;
+        bookingStatistics: Record<string, number>;
+        lowStockAlerts: { id: string; name: string; stockQuantity: number }[];
+    } | null>(null);
+    const [loadingAnalytics, setLoadingAnalytics] = useState(false);
     const [showAddItem, setShowAddItem] = useState(false);
     const [showAddCampaign, setShowAddCampaign] = useState(false);
     const [selectedStoreId, setSelectedStoreId] = useState<string>("");
@@ -67,6 +77,36 @@ export default function OwnerDashboardClient() {
     const [cancelModalOpen, setCancelModalOpen] = useState(false);
     const [cancelBookingId, setCancelBookingId] = useState<string | null>(null);
     const [cancelAction, setCancelAction] = useState<"approve" | "reject" | null>(null);
+
+    const [settingsName, setSettingsName] = useState("");
+    const [settingsTagline, setSettingsTagline] = useState("");
+    const [updatingSettings, setUpdatingSettings] = useState(false);
+
+    async function handleSaveSettings(e: FormEvent) {
+        e.preventDefault();
+        if (!selectedStoreId || updatingSettings) return;
+
+        if (!settingsName.trim()) {
+            toast.error("Store name is required.");
+            return;
+        }
+
+        setUpdatingSettings(true);
+        try {
+            const res = await updateStoreSettings(selectedStoreId, {
+                name: settingsName.trim(),
+                tagline: settingsTagline.trim() || null,
+            });
+            toast.success(res.message || "Store settings updated successfully!");
+            
+            // Refresh local inventory/store info
+            await load();
+        } catch (err) {
+            toast.error(err instanceof Error ? err.message : "Failed to save settings");
+        } finally {
+            setUpdatingSettings(false);
+        }
+    }
 
     async function load() {
         try {
@@ -86,6 +126,24 @@ export default function OwnerDashboardClient() {
         }
     }
 
+    async function loadAnalyticsData() {
+        if (!selectedStoreId) return;
+        setLoadingAnalytics(true);
+        try {
+            const res = await apiFetch(`/owner/analytics?storeId=${selectedStoreId}`, {
+                includeAuth: true,
+            });
+            if (res.ok) {
+                const data = await res.json();
+                setAnalytics(data);
+            }
+        } catch (err) {
+            console.error("Failed to load analytics:", err);
+        } finally {
+            setLoadingAnalytics(false);
+        }
+    }
+
     useEffect(() => {
         const token = getToken();
         const user = getStoredUser();
@@ -93,6 +151,12 @@ export default function OwnerDashboardClient() {
         if (user?.role !== "STORE_OWNER") { toast.warning("You are not allowed to view the owner panel."); router.replace("/"); return; }
         void load();
     }, [router, toast]);
+
+    useEffect(() => {
+        if (selectedStoreId) {
+            void loadAnalyticsData();
+        }
+    }, [selectedStoreId]);
 
     const selectedStore = useMemo(() => inventory.find((s) => s.id === selectedStoreId), [inventory, selectedStoreId]);
     const storeItems = selectedStore?.items ?? [];
@@ -108,6 +172,13 @@ export default function OwnerDashboardClient() {
         const diffTime = Date.now() - createdDate.getTime();
         const diffDays = diffTime / (1000 * 60 * 60 * 24);
         return diffDays <= 7;
+    }, [selectedStore]);
+
+    useEffect(() => {
+        if (selectedStore) {
+            setSettingsName(selectedStore.name || "");
+            setSettingsTagline(selectedStore.tagline || "");
+        }
     }, [selectedStore]);
 
     async function handleSendAnnouncement() {
@@ -295,7 +366,7 @@ export default function OwnerDashboardClient() {
     if (state === "loading") {
         return (
             <OwnerPanelShell title="Loading..." description="Fetching store data." activeTab={activeTab}
-                onTabChange={(t) => { if (t === "inventory" || t === "bookings" || t === "promotions") setActiveTab(t); }}>
+                onTabChange={(t) => { if (t === "inventory" || t === "bookings" || t === "promotions" || t === "analytics" || t === "settings") setActiveTab(t); }}>
                 <div className="space-y-4">
                     {[1, 2, 3].map((n) => (
                         <div key={n} className="h-14 rounded-xl bg-gray-100 animate-pulse" />
@@ -308,7 +379,7 @@ export default function OwnerDashboardClient() {
     if (state === "error") {
         return (
             <OwnerPanelShell title="Error" description="Unable to load store data." activeTab={activeTab}
-                onTabChange={(t) => { if (t === "inventory" || t === "bookings" || t === "promotions") setActiveTab(t); }}>
+                onTabChange={(t) => { if (t === "inventory" || t === "bookings" || t === "promotions" || t === "analytics" || t === "settings") setActiveTab(t); }}>
                 <div className="rounded-xl border border-rose-100 bg-rose-50 p-8 text-center shadow-sm">
                     <p className="text-base font-semibold text-rose-700">{error}</p>
                     <button onClick={() => void load()} className="mt-4 rounded-full bg-rose-600 px-5 py-2 text-sm font-bold text-white hover:bg-rose-700 active:scale-95">Retry</button>
@@ -317,12 +388,25 @@ export default function OwnerDashboardClient() {
         );
     }
 
-    const title = activeTab === "inventory" ? "Inventory Catalog" : activeTab === "bookings" ? "Orders Dashboard" : "Active Campaigns";
+    const title = activeTab === "inventory"
+        ? "Inventory Catalog"
+        : activeTab === "bookings"
+            ? "Orders Dashboard"
+            : activeTab === "promotions"
+                ? "Active Campaigns"
+                : activeTab === "settings"
+                    ? "Store Settings"
+                    : "Live Store Analytics";
+
     const desc = activeTab === "inventory"
         ? `${storeItems.length} active menu items`
         : activeTab === "bookings"
             ? `${pendingBookings.length} pending requests`
-            : `${storeCampaigns.length} configured sale campaigns`;
+            : activeTab === "promotions"
+                ? `${storeCampaigns.length} configured sale campaigns`
+                : activeTab === "settings"
+                    ? "Manage your campus kitchen details, name, and tagline"
+                    : "Real-time metrics, product popularity, and sales breakdown";
 
     return (
         <OwnerPanelShell
@@ -335,7 +419,7 @@ export default function OwnerDashboardClient() {
                         : undefined
             }
             activeTab={activeTab}
-            onTabChange={(t) => { if (t === "inventory" || t === "bookings" || t === "promotions") setActiveTab(t); }}
+            onTabChange={(t) => { if (t === "inventory" || t === "bookings" || t === "promotions" || t === "analytics" || t === "settings") setActiveTab(t); }}
             onActionClick={() => { 
                 if (activeTab === "inventory") {
                     setShowAddItem((p) => !p); 
@@ -345,61 +429,33 @@ export default function OwnerDashboardClient() {
             }}
         >
             <div className="space-y-6">
-                {/* Store selector + stats row */}
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                    <div className="flex flex-col sm:flex-row sm:items-sm gap-3 w-full sm:w-auto">
-                        {storeSelector}
-                        {selectedStore && (
-                            <span className="self-start sm:self-center text-xs lg:text-sm font-black text-orange-600 bg-orange-50 px-3 py-1.5 rounded-full uppercase tracking-wider whitespace-nowrap">
-                                {selectedStore.hostel} • Room {selectedStore.roomNumber}
-                            </span>
-                        )}
-                    </div>
-                    <div className="flex gap-4 w-full sm:w-auto overflow-x-auto pb-1 sm:pb-0">
-                        <div className="rounded-xl border border-gray-105 bg-white px-5 py-3 text-center shadow-sm min-w-[100px] flex-1 sm:flex-none">
-                            <p className="text-2xl font-black text-gray-950">{storeItems.length}</p>
-                            <p className="text-[10px] lg:text-xs font-bold uppercase tracking-wider text-gray-400">Catalog Items</p>
-                        </div>
-                        <div className="rounded-xl border border-gray-105 bg-white px-5 py-3 text-center shadow-sm min-w-[100px] flex-1 sm:flex-none">
-                            <p className="text-2xl font-black text-gray-950">{pendingBookings.length}</p>
-                            <p className="text-[10px] lg:text-xs font-bold uppercase tracking-wider text-gray-400">Pending Orders</p>
-                        </div>
-                        {lowStockItems.length > 0 && (
-                            <div className="rounded-xl border border-amber-100 bg-amber-50 px-5 py-3 text-center shadow-sm min-w-[100px] flex-1 sm:flex-none">
-                                <p className="text-2xl font-black text-amber-700">{lowStockItems.length}</p>
-                                <p className="text-[10px] lg:text-xs font-bold uppercase tracking-wider text-amber-600">Low Stock</p>
-                            </div>
-                        )}
-                    </div>
-                </div>
-
-                {/* Grand Opening Announcement Banner */}
-                {selectedStore && !selectedStore.announcementSent && isWithin7Days && (
-                    <div className="rounded-2xl border border-orange-100 bg-gradient-to-r from-orange-50 to-rose-50/50 p-5 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
-                        <div className="space-y-1 max-w-xl">
-                            <div className="flex items-center gap-2">
-                                <span className="text-[10px] font-black uppercase tracking-wider text-orange-600 bg-orange-100 px-2 py-0.5 rounded-full">
-                                    Grand Opening
+                {/* Store selector + stats row — hidden on Settings tab */}
+                {activeTab !== "settings" && (
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                        <div className="flex flex-col sm:flex-row sm:items-sm gap-3 w-full sm:w-auto">
+                            {storeSelector}
+                            {selectedStore && (
+                                <span className="self-start sm:self-center text-xs lg:text-sm font-black text-orange-600 bg-orange-50 px-3 py-1.5 rounded-full uppercase tracking-wider whitespace-nowrap">
+                                    {selectedStore.hostel} • Room {selectedStore.roomNumber}
                                 </span>
-                                <span className="text-xs font-semibold text-gray-500">
-                                    One-time choice available
-                                </span>
-                            </div>
-                            <h3 className="text-base font-extrabold text-gray-950">Announce your store launch to campus!</h3>
-                            <p className="text-xs text-gray-600 leading-relaxed font-medium">
-                                Send a beautiful one-time launch email to all subscribed campus students to let them know {selectedStore.name} is open for business at {selectedStore.hostel}.
-                            </p>
+                            )}
                         </div>
-                        <button
-                            type="button"
-                            onClick={() => setAnnounceModalOpen(true)}
-                            className="inline-flex items-center justify-center gap-2 rounded-xl bg-orange-600 hover:bg-orange-700 text-white text-xs font-bold px-4 py-2.5 shadow-md shadow-orange-100/50 transition active:scale-95 shrink-0 self-start md:self-center"
-                        >
-                            <svg className="h-4.5 w-4.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
-                            </svg>
-                            <span>Send Launch Email</span>
-                        </button>
+                        <div className="flex gap-4 w-full sm:w-auto overflow-x-auto pb-1 sm:pb-0">
+                            <div className="rounded-xl border border-gray-105 bg-white px-5 py-3 text-center shadow-sm min-w-[100px] flex-1 sm:flex-none">
+                                <p className="text-2xl font-black text-gray-950">{storeItems.length}</p>
+                                <p className="text-[10px] lg:text-xs font-bold uppercase tracking-wider text-gray-400">Catalog Items</p>
+                            </div>
+                            <div className="rounded-xl border border-gray-105 bg-white px-5 py-3 text-center shadow-sm min-w-[100px] flex-1 sm:flex-none">
+                                <p className="text-2xl font-black text-gray-950">{pendingBookings.length}</p>
+                                <p className="text-[10px] lg:text-xs font-bold uppercase tracking-wider text-gray-400">Pending Orders</p>
+                            </div>
+                            {lowStockItems.length > 0 && (
+                                <div className="rounded-xl border border-amber-100 bg-amber-50 px-5 py-3 text-center shadow-sm min-w-[100px] flex-1 sm:flex-none">
+                                    <p className="text-2xl font-black text-amber-700">{lowStockItems.length}</p>
+                                    <p className="text-[10px] lg:text-xs font-bold uppercase tracking-wider text-amber-600">Low Stock</p>
+                                </div>
+                            )}
+                        </div>
                     </div>
                 )}
 
@@ -646,6 +702,16 @@ export default function OwnerDashboardClient() {
                                                                     : "bg-gray-100 text-gray-600"
                                                 }`}>{b.status === "CANCEL_REQUESTED" ? "CANCEL REQUESTED" : b.status}</span>
                                         </div>
+                                        <p className="text-[10px] text-gray-400 font-medium -mt-2">
+                                            Ordered: {new Date(b.createdAt).toLocaleDateString("en-IN", {
+                                                day: "2-digit",
+                                                month: "short",
+                                                year: "numeric",
+                                                hour: "2-digit",
+                                                minute: "2-digit",
+                                                hour12: true
+                                            })}
+                                        </p>
 
                                         <div className="text-sm text-gray-600 border-t border-gray-50 pt-2">
                                             <p className="font-bold text-gray-900 text-sm lg:text-base">{b.user.firstName || "Customer"}</p>
@@ -705,6 +771,7 @@ export default function OwnerDashboardClient() {
                                 <thead>
                                     <tr className="border-b border-gray-100 bg-gray-50/80">
                                         <th className="px-6 py-4 font-bold text-xs lg:text-sm uppercase tracking-wider text-gray-400">Order #</th>
+                                        <th className="px-6 py-4 font-bold text-xs lg:text-sm uppercase tracking-wider text-gray-400">Date</th>
                                         <th className="px-6 py-4 font-bold text-xs lg:text-sm uppercase tracking-wider text-gray-400">Customer</th>
                                         <th className="px-6 py-4 font-bold text-xs lg:text-sm uppercase tracking-wider text-gray-400">Items Ordered</th>
                                         <th className="px-6 py-4 font-bold text-xs lg:text-sm uppercase tracking-wider text-gray-400 text-right">Total</th>
@@ -719,6 +786,16 @@ export default function OwnerDashboardClient() {
                                             <tr key={b.id} className="hover:bg-orange-50/30 transition duration-150">
                                                 <td className="px-6 py-4">
                                                     <span className="font-black text-orange-600 text-base">{b.orderNumber || b.id.slice(0, 6).toUpperCase()}</span>
+                                                </td>
+                                                <td className="px-6 py-4 text-xs font-bold text-gray-500 whitespace-nowrap">
+                                                    {new Date(b.createdAt).toLocaleDateString("en-IN", {
+                                                        day: "2-digit",
+                                                        month: "short",
+                                                        year: "numeric",
+                                                        hour: "2-digit",
+                                                        minute: "2-digit",
+                                                        hour12: true
+                                                    })}
                                                 </td>
                                                 <td className="px-6 py-4">
                                                     <p className="font-bold text-gray-900 text-sm lg:text-base">{b.user.firstName || "Customer"}</p>
@@ -978,6 +1055,313 @@ export default function OwnerDashboardClient() {
                                 </tbody>
                             </table>
                         </div>
+                    </div>
+                )}
+
+                {/* ANALYTICS TAB */}
+                {activeTab === "analytics" && (
+                    <div className="space-y-6">
+                        {loadingAnalytics && !analytics ? (
+                            <div className="grid gap-4 sm:grid-cols-3">
+                                {[1, 2, 3].map((n) => (
+                                    <div key={n} className="h-32 rounded-2xl bg-gray-100 animate-pulse border border-gray-100" />
+                                ))}
+                            </div>
+                        ) : !analytics ? (
+                            <div className="rounded-xl border border-orange-100 bg-orange-50/30 p-8 text-center text-gray-500 font-semibold">
+                                No analytics data available.
+                            </div>
+                        ) : (
+                            <div className="space-y-6">
+                                {/* Revenue Row */}
+                                <div className="grid gap-4 sm:grid-cols-3">
+                                    <div className="rounded-2xl border border-orange-100 bg-gradient-to-br from-orange-50/60 to-orange-100/40 p-6 shadow-sm">
+                                        <p className="text-xs font-bold uppercase tracking-wider text-orange-600">Total Revenue</p>
+                                        <p className="mt-2 text-3xl font-black text-gray-950">{money(analytics.totalRevenue)}</p>
+                                        <p className="mt-1 text-[11px] text-gray-400 font-medium">All completed orders</p>
+                                    </div>
+                                    <div className="rounded-2xl border border-rose-100 bg-gradient-to-br from-rose-50/60 to-rose-100/40 p-6 shadow-sm">
+                                        <p className="text-xs font-bold uppercase tracking-wider text-rose-600">Weekly Revenue</p>
+                                        <p className="mt-2 text-3xl font-black text-gray-950">{money(analytics.weeklyRevenue)}</p>
+                                        <p className="mt-1 text-[11px] text-gray-400 font-medium">Last 7 days completed</p>
+                                    </div>
+                                    <div className="rounded-2xl border border-amber-100 bg-gradient-to-br from-amber-50/60 to-amber-100/40 p-6 shadow-sm">
+                                        <p className="text-xs font-bold uppercase tracking-wider text-amber-600">Monthly Revenue</p>
+                                        <p className="mt-2 text-3xl font-black text-gray-950">{money(analytics.monthlyRevenue)}</p>
+                                        <p className="mt-1 text-[11px] text-gray-400 font-medium">Last 30 days completed</p>
+                                    </div>
+                                </div>
+
+                                {/* Popularity Row */}
+                                <div className="grid gap-6 md:grid-cols-2">
+                                    {/* Most / Least Sold */}
+                                    <div className="rounded-2xl border border-orange-100/80 bg-white p-6 shadow-sm space-y-4">
+                                        <h3 className="text-base font-extrabold text-gray-900 border-b border-gray-50 pb-2">Product Performance</h3>
+                                        <div className="space-y-4">
+                                            <div>
+                                                <div className="flex items-center justify-between mb-1.5">
+                                                    <span className="text-xs font-bold uppercase tracking-wider text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full">Most Sold Item</span>
+                                                    <span className="text-xs font-black text-gray-900">{analytics.mostSoldItem ? `${analytics.mostSoldItem.quantity} units sold` : "0 sales"}</span>
+                                                </div>
+                                                {analytics.mostSoldItem ? (
+                                                    <div className="p-3.5 bg-gray-50 rounded-xl border border-gray-100">
+                                                        <p className="text-sm font-black text-gray-950">{analytics.mostSoldItem.name}</p>
+                                                        <p className="text-xs text-gray-500 font-bold mt-0.5">Price: {money(analytics.mostSoldItem.price)} | Revenue: {money(analytics.mostSoldItem.quantity * analytics.mostSoldItem.price)}</p>
+                                                    </div>
+                                                ) : (
+                                                    <p className="text-xs text-gray-400 font-medium p-3 bg-gray-50 rounded-xl">No items have been ordered yet.</p>
+                                                )}
+                                            </div>
+
+                                            <div>
+                                                <div className="flex items-center justify-between mb-1.5">
+                                                    <span className="text-xs font-bold uppercase tracking-wider text-rose-700 bg-rose-50 px-2.5 py-0.5 rounded-full">Least Sold Item</span>
+                                                    <span className="text-xs font-black text-gray-900">{analytics.leastSoldItem ? `${analytics.leastSoldItem.quantity} units sold` : "0 sales"}</span>
+                                                </div>
+                                                {analytics.leastSoldItem ? (
+                                                    <div className="p-3.5 bg-gray-50 rounded-xl border border-gray-100">
+                                                        <p className="text-sm font-black text-gray-950">{analytics.leastSoldItem.name}</p>
+                                                        <p className="text-xs text-gray-500 font-bold mt-0.5">Price: {money(analytics.leastSoldItem.price)} | Revenue: {money(analytics.leastSoldItem.quantity * analytics.leastSoldItem.price)}</p>
+                                                    </div>
+                                                ) : (
+                                                    <p className="text-xs text-gray-400 font-medium p-3 bg-gray-50 rounded-xl">No menu items found in catalog.</p>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Low Stock Alerts */}
+                                    <div className="rounded-2xl border border-orange-100/80 bg-white p-6 shadow-sm space-y-4">
+                                        <h3 className="text-base font-extrabold text-gray-900 border-b border-gray-50 pb-2">Low Stock Alerts</h3>
+                                        <div className="space-y-2.5 max-h-[175px] overflow-y-auto pr-1">
+                                            {analytics.lowStockAlerts.length === 0 ? (
+                                                <div className="flex items-center gap-3 p-4 bg-emerald-50 border border-emerald-100 rounded-xl">
+                                                    <svg className="h-6 w-6 text-emerald-600 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+                                                        <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                                    </svg>
+                                                    <div>
+                                                        <p className="text-xs font-bold text-emerald-800">All Items In Stock</p>
+                                                        <p className="text-[10px] text-emerald-600 font-bold">No menu items are currently below stock limits.</p>
+                                                    </div>
+                                                </div>
+                                            ) : (
+                                                analytics.lowStockAlerts.map((item) => (
+                                                    <div key={item.id} className="flex items-center justify-between p-3 border border-rose-100 bg-rose-50/50 rounded-xl">
+                                                        <span className="text-sm font-black text-gray-900">{item.name}</span>
+                                                        <span className="text-xs font-black text-rose-700 bg-rose-100 px-2.5 py-1 rounded-full shrink-0">
+                                                            {item.stockQuantity <= 0 ? "OUT OF STOCK" : `${item.stockQuantity} Left`}
+                                                        </span>
+                                                    </div>
+                                                ))
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Booking Statistics */}
+                                <div className="rounded-2xl border border-orange-100/80 bg-white p-6 shadow-sm space-y-4">
+                                    <h3 className="text-base font-extrabold text-gray-900 border-b border-gray-50 pb-2">Booking Lifecycle Statistics</h3>
+                                    <div className="grid gap-3 grid-cols-2 sm:grid-cols-4 lg:grid-cols-7">
+                                        <div className="p-3 border border-orange-100/30 bg-orange-50/20 rounded-xl text-center">
+                                            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Placed</p>
+                                            <p className="mt-1 text-2xl font-black text-orange-600">{analytics.bookingStatistics.PLACED}</p>
+                                        </div>
+                                        <div className="p-3 border border-sky-100/30 bg-sky-50/20 rounded-xl text-center">
+                                            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Accepted</p>
+                                            <p className="mt-1 text-2xl font-black text-sky-600">{analytics.bookingStatistics.ACCEPTED}</p>
+                                        </div>
+                                        <div className="p-3 border border-cyan-100/30 bg-cyan-50/20 rounded-xl text-center">
+                                            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Ready</p>
+                                            <p className="mt-1 text-2xl font-black text-cyan-600">{analytics.bookingStatistics.READY}</p>
+                                        </div>
+                                        <div className="p-3 border border-emerald-100/30 bg-emerald-50/20 rounded-xl text-center">
+                                            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Completed</p>
+                                            <p className="mt-1 text-2xl font-black text-emerald-600">{analytics.bookingStatistics.COMPLETED}</p>
+                                        </div>
+                                        <div className="p-3 border border-rose-100/30 bg-rose-50/20 rounded-xl text-center">
+                                            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Rejected</p>
+                                            <p className="mt-1 text-2xl font-black text-rose-600">{analytics.bookingStatistics.REJECTED}</p>
+                                        </div>
+                                        <div className="p-3 border border-amber-100/30 bg-amber-50/20 rounded-xl text-center">
+                                            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Cancel Req</p>
+                                            <p className="mt-1 text-2xl font-black text-amber-600">{analytics.bookingStatistics.CANCEL_REQUESTED}</p>
+                                        </div>
+                                        <div className="p-3 border border-slate-100/30 bg-slate-50/20 rounded-xl text-center">
+                                            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Cancelled</p>
+                                            <p className="mt-1 text-2xl font-black text-slate-600">{analytics.bookingStatistics.CANCELLED}</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                )}
+
+                {/* SETTINGS TAB */}
+                {activeTab === "settings" && selectedStore && (
+                    <div className="max-w-2xl space-y-5">
+
+                        {/* Kitchen Identity */}
+                        <div className="rounded-2xl border border-orange-100/80 bg-white p-6 shadow-sm">
+                            <div className="flex items-center gap-3 border-b border-gray-100 pb-4 mb-5">
+                                <div className="h-8 w-8 rounded-xl bg-orange-50 flex items-center justify-center shrink-0">
+                                    <svg className="h-4 w-4 text-orange-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+                                        <path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                                    </svg>
+                                </div>
+                                <div>
+                                    <h3 className="text-sm font-extrabold text-gray-900 uppercase tracking-wider">Kitchen Identity</h3>
+                                    <p className="text-xs text-gray-400 font-medium mt-0.5">Shown to students on the campus kitchen catalog</p>
+                                </div>
+                            </div>
+
+                            <form onSubmit={handleSaveSettings} className="space-y-4">
+                                <div>
+                                    <label htmlFor="settingsName" className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">
+                                        Store Name
+                                    </label>
+                                    <input
+                                        type="text"
+                                        id="settingsName"
+                                        value={settingsName}
+                                        onChange={(e) => setSettingsName(e.target.value)}
+                                        placeholder="e.g. Maggi Point"
+                                        className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-2.5 text-sm font-semibold text-gray-900 outline-none focus:border-orange-400 focus:bg-white focus:ring-1 focus:ring-orange-100 transition"
+                                        required
+                                    />
+                                </div>
+
+                                <div>
+                                    <label htmlFor="settingsTagline" className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">
+                                        Tagline
+                                    </label>
+                                    <input
+                                        type="text"
+                                        id="settingsTagline"
+                                        value={settingsTagline}
+                                        onChange={(e) => setSettingsTagline(e.target.value)}
+                                        placeholder="e.g. Late night cravings sorted."
+                                        className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-2.5 text-sm font-semibold text-gray-900 outline-none focus:border-orange-400 focus:bg-white focus:ring-1 focus:ring-orange-100 transition"
+                                    />
+                                </div>
+
+                                {/* Live Preview */}
+                                <div className="rounded-xl border border-gray-150 bg-gray-50/60 p-4">
+                                    <p className="text-[10px] font-black uppercase tracking-wider text-gray-400 mb-2.5">Student Preview</p>
+                                    <div className="bg-white rounded-xl border border-orange-100/60 p-3.5 shadow-sm">
+                                        <div className="flex items-start justify-between gap-3">
+                                            <div className="min-w-0">
+                                                <p className="font-extrabold text-sm text-gray-950 truncate">
+                                                    {settingsName.trim() || selectedStore.name}
+                                                </p>
+                                                <p className="text-xs text-gray-400 font-medium mt-0.5 line-clamp-1">
+                                                    {settingsTagline.trim() || "No tagline yet"}
+                                                </p>
+                                            </div>
+                                            <span className="text-[10px] font-bold text-orange-600 bg-orange-50 px-2 py-1 rounded-full uppercase tracking-wide shrink-0">
+                                                {selectedStore.hostel}
+                                            </span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="flex justify-end pt-1">
+                                    <button
+                                        type="submit"
+                                        disabled={updatingSettings}
+                                        className="inline-flex items-center gap-2 rounded-xl bg-orange-600 hover:bg-orange-700 disabled:opacity-60 text-white text-sm font-bold px-5 py-2.5 shadow-md shadow-orange-200/60 transition active:scale-95"
+                                    >
+                                        {updatingSettings ? (
+                                            <>
+                                                <svg className="animate-spin h-3.5 w-3.5 text-white" fill="none" viewBox="0 0 24 24">
+                                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                                                </svg>
+                                                Saving...
+                                            </>
+                                        ) : "Save Changes"}
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+
+                        {/* Location — read-only */}
+                        <div className="rounded-2xl border border-orange-100/80 bg-white p-6 shadow-sm">
+                            <div className="flex items-center gap-3 border-b border-gray-100 pb-4 mb-5">
+                                <div className="h-8 w-8 rounded-xl bg-orange-50 flex items-center justify-center shrink-0">
+                                    <svg className="h-4 w-4 text-orange-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+                                        <path strokeLinecap="round" strokeLinejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                                        <path strokeLinecap="round" strokeLinejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                                    </svg>
+                                </div>
+                                <div>
+                                    <h3 className="text-sm font-extrabold text-gray-900 uppercase tracking-wider">Branch Location</h3>
+                                    <p className="text-xs text-gray-400 font-medium mt-0.5">Locked — contact admin to relocate</p>
+                                </div>
+                            </div>
+                            <div className="grid gap-3 sm:grid-cols-2">
+                                <div className="rounded-xl border border-gray-100 bg-gray-50 px-4 py-3">
+                                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Hostel</p>
+                                    <p className="mt-1 text-sm font-extrabold text-gray-900">{selectedStore.hostel}</p>
+                                </div>
+                                <div className="rounded-xl border border-gray-100 bg-gray-50 px-4 py-3">
+                                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Room</p>
+                                    <p className="mt-1 text-sm font-extrabold text-gray-900">{selectedStore.roomNumber}</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Grand Opening Announcement */}
+                        <div className="rounded-2xl border border-orange-100/80 bg-white p-6 shadow-sm">
+                            <div className="flex items-center gap-3 border-b border-gray-100 pb-4 mb-5">
+                                <div className="h-8 w-8 rounded-xl bg-orange-50 flex items-center justify-center shrink-0">
+                                    <svg className="h-4 w-4 text-orange-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+                                        <path strokeLinecap="round" strokeLinejoin="round" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                                    </svg>
+                                </div>
+                                <div>
+                                    <h3 className="text-sm font-extrabold text-gray-900 uppercase tracking-wider">Launch Announcement</h3>
+                                    <p className="text-xs text-gray-400 font-medium mt-0.5">One-time campus-wide email blast</p>
+                                </div>
+                            </div>
+
+                            {selectedStore.announcementSent ? (
+                                <div className="flex items-center gap-3 rounded-xl border border-emerald-100 bg-emerald-50/60 px-4 py-3">
+                                    <svg className="h-4 w-4 text-emerald-600 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+                                        <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                    </svg>
+                                    <p className="text-xs font-bold text-emerald-700">Launch email already sent to all campus subscribers.</p>
+                                </div>
+                            ) : (
+                                <div className="space-y-4">
+                                    <p className="text-sm text-gray-500 font-medium leading-relaxed">
+                                        Send a one-time launch notification to all campus students who subscribe to new store alerts. Let them know <span className="font-bold text-gray-800">{selectedStore.name}</span> is open at <span className="font-bold text-gray-800">{selectedStore.hostel}, Room {selectedStore.roomNumber}</span>.
+                                    </p>
+                                    {!isWithin7Days && (
+                                        <div className="flex items-center gap-2.5 rounded-xl border border-orange-100 bg-orange-50/60 px-4 py-3">
+                                            <svg className="h-4 w-4 text-orange-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+                                                <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                            </svg>
+                                            <p className="text-xs font-semibold text-orange-700">Grand opening window has passed (available within 7 days of store creation).</p>
+                                        </div>
+                                    )}
+                                    <div className="flex justify-end">
+                                        <button
+                                            type="button"
+                                            disabled={!isWithin7Days}
+                                            onClick={() => setAnnounceModalOpen(true)}
+                                            className="inline-flex items-center gap-2 rounded-xl bg-orange-600 hover:bg-orange-700 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-bold px-5 py-2.5 shadow-md shadow-orange-200/60 transition active:scale-95"
+                                        >
+                                            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+                                                <path strokeLinecap="round" strokeLinejoin="round" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                                            </svg>
+                                            Send Launch Email
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+
                     </div>
                 )}
             </div>

@@ -2,6 +2,7 @@ import { Router, Response } from "express";
 import { Prisma } from "@prisma/client";
 
 import { prisma } from "../lib/prisma";
+import { memoryCache } from "../lib/cache";
 
 import {
     requireAuth,
@@ -372,6 +373,7 @@ router.post(
                 return b;
             });
 
+            memoryCache.invalidateStore(storeId);
             res.json({
                 message: "Booking placed successfully",
                 booking,

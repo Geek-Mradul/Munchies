@@ -37,7 +37,7 @@ model User {
   prefPromoAlerts           Boolean @default(true)
   prefNewStoreNotifications Boolean @default(true)
 
-  stores             Store[]
+  store              Store?
   carts              Cart[]
   bookings           Booking[]
   storeOwnerRequests StoreOwnerRequest[]
@@ -46,8 +46,9 @@ model User {
 
 model Store {
   id         String @id @default(uuid())
-  ownerId    String
+  ownerId    String @unique
   name       String
+  tagline    String?
   hostel     String
   roomNumber String
   createdAt  DateTime @default(now())

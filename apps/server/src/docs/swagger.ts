@@ -951,6 +951,55 @@ const swaggerSpec = {
                 },
             },
         },
+        "/owner/stores/{id}": {
+            patch: {
+                tags: ["Owner"],
+                summary: "Update store name and tagline settings",
+                security: [{ bearerAuth: [] }],
+                parameters: [
+                    {
+                        in: "path",
+                        name: "id",
+                        required: true,
+                        schema: { type: "string" },
+                    },
+                ],
+                requestBody: {
+                    required: true,
+                    content: {
+                        "application/json": {
+                            schema: {
+                                type: "object",
+                                required: ["name"],
+                                properties: {
+                                    name: { type: "string", description: "The updated display name of the kitchen" },
+                                    tagline: { type: "string", nullable: true, description: "A catchy tagline to describe the kitchen brand (max 100 characters)" },
+                                },
+                            },
+                        },
+                    },
+                },
+                responses: {
+                    200: {
+                        description: "Store settings successfully updated",
+                        content: {
+                            "application/json": {
+                                schema: {
+                                    type: "object",
+                                    properties: {
+                                        message: { type: "string" },
+                                        store: { $ref: "#/components/schemas/Store" },
+                                    },
+                                },
+                            },
+                        },
+                    },
+                    400: { description: "Invalid store name parameter" },
+                    401: { $ref: "#/components/responses/Unauthorized" },
+                    404: { description: "Store not found or unauthorized access" },
+                },
+            },
+        },
         "/store-owner-request": {
             post: {
                 tags: ["Store Owner Requests"],

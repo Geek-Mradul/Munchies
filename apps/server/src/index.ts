@@ -8,6 +8,7 @@ dotenv.config({ path: envPath });
 dotenv.config();
 
 import { prisma } from "./lib/prisma";
+import { memoryCache } from "./lib/cache";
 import swaggerSpec from "./docs/swagger";
 
 import authRoutes from "./routes/auth";
@@ -84,6 +85,7 @@ app.get("/", (req, res) => {
 function mapStore(store: {
     id: string;
     name: string;
+    tagline?: string | null;
     hostel: string;
     roomNumber: string;
 }) {
@@ -92,7 +94,7 @@ function mapStore(store: {
         name: store.name,
         hostel: store.hostel,
         room: store.roomNumber,
-        tagline: "",
+        tagline: store.tagline || "",
     };
 }
 
@@ -116,13 +118,21 @@ function mapItem(item: {
 
 app.get("/stores", async (req, res) => {
     try {
+        const cacheKey = "stores:all";
+        const cached = memoryCache.get(cacheKey);
+        if (cached) {
+            return res.json(cached);
+        }
+
         const stores = await prisma.store.findMany({
             orderBy: {
                 name: "asc",
             },
         });
 
-        res.json(stores.map(mapStore));
+        const result = stores.map(mapStore);
+        memoryCache.set(cacheKey, result);
+        res.json(result);
     } catch (error) {
         console.error(error);
 
@@ -137,9 +147,16 @@ app.get("/stores", async (req, res) => {
 // GET SINGLE STORE
 app.get("/stores/:id", async (req, res) => {
     try {
+        const storeId = req.params.id;
+        const cacheKey = `store:${storeId}`;
+        const cached = memoryCache.get(cacheKey);
+        if (cached) {
+            return res.json(cached);
+        }
+
         const store = await prisma.store.findUnique({
             where: {
-                id: req.params.id,
+                id: storeId,
             },
         });
 
@@ -149,7 +166,9 @@ app.get("/stores/:id", async (req, res) => {
             });
         }
 
-        res.json(mapStore(store));
+        const result = mapStore(store);
+        memoryCache.set(cacheKey, result);
+        res.json(result);
     } catch (error) {
         console.error(error);
 
@@ -161,16 +180,25 @@ app.get("/stores/:id", async (req, res) => {
 
 app.get("/stores/:id/items", async (req, res) => {
     try {
+        const storeId = req.params.id;
+        const cacheKey = `store:${storeId}:items`;
+        const cached = memoryCache.get(cacheKey);
+        if (cached) {
+            return res.json(cached);
+        }
+
         const storeItems = await prisma.item.findMany({
             where: {
-                storeId: req.params.id,
+                storeId,
             },
             orderBy: {
                 name: "asc",
             },
         });
 
-        res.json(storeItems.map(mapItem));
+        const result = storeItems.map(mapItem);
+        memoryCache.set(cacheKey, result);
+        res.json(result);
     } catch (error) {
         console.error(error);
 
@@ -200,6 +228,25 @@ app.get(
         });
     }
 );
+
+// Centralized Error Handling Middleware
+app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+    console.error("Centralized Error Middleware Caught:", err);
+    const status = err.status || err.statusCode || 500;
+    const message = err.message || "An unexpected server error occurred";
+    res.status(status).json({
+        error: message,
+    });
+});
+
+// Process-level failure handling
+process.on("unhandledRejection", (reason, promise) => {
+    console.error("Unhandled Promise Rejection detected:", promise, "reason:", reason);
+});
+
+process.on("uncaughtException", (error) => {
+    console.error("Uncaught Exception detected:", error);
+});
 
 app.listen(4000, async () => {
     console.log("API running on port 4000");

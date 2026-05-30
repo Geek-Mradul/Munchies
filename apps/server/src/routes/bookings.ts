@@ -156,4 +156,141 @@ router.post(
     }
 );
 
+// GET USER ANALYTICS
+router.get(
+    "/analytics",
+    requireAuth,
+    async (req: AuthRequest, res: Response) => {
+        try {
+            const userId = req.user!.userId;
+
+            // 1. Total Spending (sum of totalAmount for COMPLETED bookings)
+            const completedBookings = await prisma.booking.findMany({
+                where: {
+                    userId,
+                    status: "COMPLETED",
+                },
+                select: {
+                    totalAmount: true,
+                    createdAt: true,
+                },
+            });
+
+            const totalSpending = completedBookings.reduce((sum, b) => sum + b.totalAmount, 0);
+
+            // 2. Total Bookings (count of all bookings)
+            const totalBookings = await prisma.booking.count({
+                where: {
+                    userId,
+                },
+            });
+
+            // 3. Most frequently ordered store
+            const storeCounts = await prisma.booking.groupBy({
+                by: ["storeId"],
+                where: {
+                    userId,
+                },
+                _count: {
+                    _all: true,
+                },
+            });
+
+            let mostFrequentlyOrderedStore = null;
+            if (storeCounts.length > 0) {
+                storeCounts.sort((a, b) => b._count._all - a._count._all);
+                const favoriteStoreId = storeCounts[0].storeId;
+
+                const store = await prisma.store.findUnique({
+                    where: { id: favoriteStoreId },
+                    select: { id: true, name: true, hostel: true, roomNumber: true },
+                });
+
+                if (store) {
+                    mostFrequentlyOrderedStore = {
+                        id: store.id,
+                        name: store.name,
+                        hostel: store.hostel,
+                        roomNumber: store.roomNumber,
+                        ordersCount: storeCounts[0]._count._all,
+                    };
+                }
+            }
+
+            // 4. Most frequently ordered item
+            const itemCounts = await prisma.bookingItem.groupBy({
+                by: ["itemId"],
+                where: {
+                    booking: {
+                        userId,
+                        status: "COMPLETED",
+                    },
+                },
+                _sum: {
+                    quantity: true,
+                },
+            });
+
+            let mostFrequentlyOrderedItem = null;
+            if (itemCounts.length > 0) {
+                itemCounts.sort((a, b) => (b._sum.quantity ?? 0) - (a._sum.quantity ?? 0));
+                const favoriteItemId = itemCounts[0].itemId;
+
+                const item = await prisma.item.findUnique({
+                    where: { id: favoriteItemId },
+                    select: { id: true, name: true },
+                });
+
+                if (item) {
+                    mostFrequentlyOrderedItem = {
+                        id: item.id,
+                        name: item.name,
+                        totalQuantity: itemCounts[0]._sum.quantity ?? 0,
+                    };
+                }
+            }
+
+            // 5. Monthly spending breakdown (last 6 months)
+            const sixMonthsAgo = new Date();
+            sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 5);
+            sixMonthsAgo.setDate(1);
+            sixMonthsAgo.setHours(0, 0, 0, 0);
+
+            const bookingsLastSixMonths = completedBookings.filter(
+                (b) => new Date(b.createdAt) >= sixMonthsAgo
+            );
+
+            const monthlySpendingBreakdown: { month: string; amount: number }[] = [];
+            for (let i = 5; i >= 0; i--) {
+                const d = new Date();
+                d.setMonth(d.getMonth() - i);
+                const monthName = d.toLocaleString("default", { month: "short", year: "2-digit" });
+                monthlySpendingBreakdown.push({ month: monthName, amount: 0 });
+            }
+
+            bookingsLastSixMonths.forEach((b) => {
+                const date = new Date(b.createdAt);
+                const monthName = date.toLocaleString("default", { month: "short", year: "2-digit" });
+                const index = monthlySpendingBreakdown.findIndex((m) => m.month === monthName);
+                if (index !== -1) {
+                    monthlySpendingBreakdown[index].amount += b.totalAmount;
+                }
+            });
+
+            res.json({
+                totalSpending,
+                totalBookings,
+                mostFrequentlyOrderedStore,
+                mostFrequentlyOrderedItem,
+                monthlySpendingBreakdown,
+            });
+        } catch (error) {
+            console.error(error);
+            res.status(500).json({
+                error: "Failed to generate user analytics",
+            });
+        }
+    }
+);
+
 export default router;

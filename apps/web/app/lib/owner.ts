@@ -15,12 +15,30 @@ export type OwnerInventoryItem = {
 export type OwnerInventoryStore = {
     id: string;
     name: string;
+    tagline?: string | null;
     hostel: string;
     roomNumber: string;
     items: OwnerInventoryItem[];
     createdAt: string;
     announcementSent: boolean;
 };
+
+export async function updateStoreSettings(
+    storeId: string,
+    data: { name: string; tagline?: string | null }
+) {
+    const response = await apiFetch(`/owner/stores/${storeId}`, {
+        method: "PATCH",
+        includeAuth: true,
+        body: data,
+    });
+
+    if (!response.ok) {
+        throw new Error(await parseError(response, "Failed to update store settings"));
+    }
+
+    return response.json() as Promise<{ message: string; store: OwnerInventoryStore }>;
+}
 
 async function parseError(response: Response, fallback: string) {
     try {

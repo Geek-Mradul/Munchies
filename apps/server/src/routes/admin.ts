@@ -2,6 +2,7 @@ import { Router, Response } from "express";
 
 import { prisma } from "../lib/prisma";
 import { sendEmail } from "../lib/email";
+import { memoryCache } from "../lib/cache";
 import {
     requireAuth,
     requireRole,
@@ -343,6 +344,14 @@ router.post(
                 return res.status(404).json({ error: "Owner user not found with specified email" });
             }
 
+            const existingStore = await prisma.store.findUnique({
+                where: { ownerId: owner.id },
+            });
+
+            if (existingStore) {
+                return res.status(400).json({ error: "This user already owns a store." });
+            }
+
             const store = await prisma.store.create({
                 data: {
                     name,
@@ -352,6 +361,7 @@ router.post(
                 },
             });
 
+            memoryCache.invalidateAllStores();
             res.json({
                 message: "Store created successfully",
                 store,

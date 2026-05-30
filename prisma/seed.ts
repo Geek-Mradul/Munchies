@@ -18,104 +18,205 @@ async function main() {
     console.log("Creating baseline users...");
     const hashedPassword = await bcrypt.hash("password", 10);
 
-    const [admin, ownerOne, ownerTwo, ownerThree, userOne, userTwo, userThree, userFour, userFive, userSix] =
-        await Promise.all([
-            prisma.user.create({
-                data: {
-                    email: "admin@munchies.com",
-                    passwordHash: hashedPassword,
-                    firstName: "Admin",
-                    role: Role.ADMIN,
-                },
-            }),
+    const [
+        admin,
+        ownerOne,
+        ownerTwo,
+        ownerThree,
+        ownerFour,
+        ownerFive,
+        ownerSix,
+        ownerSeven,
+        ownerEight,
+        ownerNine,
+        ownerTen,
+        ownerEleven,
+        ownerTwelve,
+        userOne,
+        userTwo,
+        userThree,
+        userFour,
+        userFive,
+        userSix,
+    ] = await Promise.all([
+        prisma.user.create({
+            data: {
+                email: "admin@munchies.com",
+                passwordHash: hashedPassword,
+                firstName: "Admin",
+                role: Role.ADMIN,
+            },
+        }),
 
-            prisma.user.create({
-                data: {
-                    email: "owner1@munchies.com",
-                    passwordHash: hashedPassword,
-                    firstName: "Ravi",
-                    role: Role.STORE_OWNER,
-                },
-            }),
+        prisma.user.create({
+            data: {
+                email: "owner1@munchies.com",
+                passwordHash: hashedPassword,
+                firstName: "Ravi",
+                role: Role.STORE_OWNER,
+            },
+        }),
 
-            prisma.user.create({
-                data: {
-                    email: "owner2@munchies.com",
-                    passwordHash: hashedPassword,
-                    firstName: "Neha",
-                    role: Role.STORE_OWNER,
-                },
-            }),
+        prisma.user.create({
+            data: {
+                email: "owner2@munchies.com",
+                passwordHash: hashedPassword,
+                firstName: "Neha",
+                role: Role.STORE_OWNER,
+            },
+        }),
 
-            prisma.user.create({
-                data: {
-                    email: "owner3@munchies.com",
-                    passwordHash: hashedPassword,
-                    firstName: "Vikram",
-                    role: Role.STORE_OWNER,
-                },
-            }),
+        prisma.user.create({
+            data: {
+                email: "owner3@munchies.com",
+                passwordHash: hashedPassword,
+                firstName: "Vikram",
+                role: Role.STORE_OWNER,
+            },
+        }),
 
-            prisma.user.create({
-                data: {
-                    email: "user1@munchies.com",
-                    passwordHash: hashedPassword,
-                    firstName: "Rahul",
-                    role: Role.USER,
-                },
-            }),
+        prisma.user.create({
+            data: {
+                email: "owner4@munchies.com",
+                passwordHash: hashedPassword,
+                firstName: "Amit",
+                role: Role.STORE_OWNER,
+            },
+        }),
 
-            prisma.user.create({
-                data: {
-                    email: "user2@munchies.com",
-                    passwordHash: hashedPassword,
-                    firstName: "Sneha",
-                    role: Role.USER,
-                },
-            }),
+        prisma.user.create({
+            data: {
+                email: "owner5@munchies.com",
+                passwordHash: hashedPassword,
+                firstName: "Pooja",
+                role: Role.STORE_OWNER,
+            },
+        }),
 
-            prisma.user.create({
-                data: {
-                    email: "user3@munchies.com",
-                    passwordHash: hashedPassword,
-                    firstName: "Aman",
-                    role: Role.USER,
-                },
-            }),
+        prisma.user.create({
+            data: {
+                email: "owner6@munchies.com",
+                passwordHash: hashedPassword,
+                firstName: "Raj",
+                role: Role.STORE_OWNER,
+            },
+        }),
 
-            prisma.user.create({
-                data: {
-                    email: "user4@munchies.com",
-                    passwordHash: hashedPassword,
-                    firstName: "Priya",
-                    role: Role.USER,
-                },
-            }),
+        prisma.user.create({
+            data: {
+                email: "owner7@munchies.com",
+                passwordHash: hashedPassword,
+                firstName: "Sonia",
+                role: Role.STORE_OWNER,
+            },
+        }),
 
-            prisma.user.create({
-                data: {
-                    email: "user5@munchies.com",
-                    passwordHash: hashedPassword,
-                    firstName: "Karan",
-                    role: Role.USER,
-                },
-            }),
+        prisma.user.create({
+            data: {
+                email: "owner8@munchies.com",
+                passwordHash: hashedPassword,
+                firstName: "Arjun",
+                role: Role.STORE_OWNER,
+            },
+        }),
 
-            prisma.user.create({
-                data: {
-                    email: "user6@munchies.com",
-                    passwordHash: hashedPassword,
-                    firstName: "Divya",
-                    role: Role.USER,
-                },
-            }),
-        ]);
+        prisma.user.create({
+            data: {
+                email: "owner9@munchies.com",
+                passwordHash: hashedPassword,
+                firstName: "Anjali",
+                role: Role.STORE_OWNER,
+            },
+        }),
+
+        prisma.user.create({
+            data: {
+                email: "owner10@munchies.com",
+                passwordHash: hashedPassword,
+                firstName: "Kabir",
+                role: Role.STORE_OWNER,
+            },
+        }),
+
+        prisma.user.create({
+            data: {
+                email: "owner11@munchies.com",
+                passwordHash: hashedPassword,
+                firstName: "Riya",
+                role: Role.STORE_OWNER,
+            },
+        }),
+
+        prisma.user.create({
+            data: {
+                email: "owner12@munchies.com",
+                passwordHash: hashedPassword,
+                firstName: "Yash",
+                role: Role.STORE_OWNER,
+            },
+        }),
+
+        prisma.user.create({
+            data: {
+                email: "user1@munchies.com",
+                passwordHash: hashedPassword,
+                firstName: "Rahul",
+                role: Role.USER,
+            },
+        }),
+
+        prisma.user.create({
+            data: {
+                email: "user2@munchies.com",
+                passwordHash: hashedPassword,
+                firstName: "Sneha",
+                role: Role.USER,
+            },
+        }),
+
+        prisma.user.create({
+            data: {
+                email: "user3@munchies.com",
+                passwordHash: hashedPassword,
+                firstName: "Aman",
+                role: Role.USER,
+            },
+        }),
+
+        prisma.user.create({
+            data: {
+                email: "user4@munchies.com",
+                passwordHash: hashedPassword,
+                firstName: "Priya",
+                role: Role.USER,
+            },
+        }),
+
+        prisma.user.create({
+            data: {
+                email: "user5@munchies.com",
+                passwordHash: hashedPassword,
+                firstName: "Karan",
+                role: Role.USER,
+            },
+        }),
+
+        prisma.user.create({
+            data: {
+                email: "user6@munchies.com",
+                passwordHash: hashedPassword,
+                firstName: "Divya",
+                role: Role.USER,
+            },
+        }),
+    ]);
 
     console.log("Creating store branches with hostel wings...");
     const stores = await Promise.all([
         prisma.store.create({
             data: {
                 name: "Maggi Point",
+                tagline: "Late night cravings sorted with hot cheesy noodles.",
                 hostel: "BH-1",
                 roomNumber: "101",
                 ownerId: ownerOne.id,
@@ -125,45 +226,110 @@ async function main() {
         prisma.store.create({
             data: {
                 name: "Lays Hub",
+                tagline: "Your favorite crunchy chips and munchies in stock.",
                 hostel: "BH-2",
                 roomNumber: "214",
-                ownerId: ownerOne.id,
+                ownerId: ownerTwo.id,
             },
         }),
 
         prisma.store.create({
             data: {
                 name: "Bun & Bite",
+                tagline: "Perfect warm burgers and sandwiches for quick study breaks.",
                 hostel: "GH-1",
                 roomNumber: "14",
-                ownerId: ownerTwo.id,
+                ownerId: ownerThree.id,
             },
         }),
 
         prisma.store.create({
             data: {
                 name: "Fresh Juice Hub",
+                tagline: "Freshly squeezed seasonal fruits and healthy milkshakes.",
                 hostel: "BH-3",
                 roomNumber: "09",
-                ownerId: ownerTwo.id,
+                ownerId: ownerFour.id,
             },
         }),
 
         prisma.store.create({
             data: {
                 name: "Tiffin Trails",
+                tagline: "Homestyle meals and warm comforting local dishes.",
                 hostel: "GH-2",
                 roomNumber: "18",
-                ownerId: ownerTwo.id,
+                ownerId: ownerFive.id,
             },
         }),
 
         prisma.store.create({
             data: {
                 name: "Chai Chaska",
+                tagline: "Perfect companion for your late-night exams prep.",
                 hostel: "BH-4",
                 roomNumber: "402",
-                ownerId: ownerThree.id,
+                ownerId: ownerSix.id,
+            },
+        }),
+
+        prisma.store.create({
+            data: {
+                name: "Momo Mania",
+                tagline: "Steaming hot vegetable and chicken momos with spicy chutney.",
+                hostel: "BH-5",
+                roomNumber: "303",
+                ownerId: ownerSeven.id,
+            },
+        }),
+
+        prisma.store.create({
+            data: {
+                name: "Shawarma Spot",
+                tagline: "Authentic spiced rolls and pocket shawarmas.",
+                hostel: "BH-6",
+                roomNumber: "112",
+                ownerId: ownerEight.id,
+            },
+        }),
+
+        prisma.store.create({
+            data: {
+                name: "Waffle Works",
+                tagline: "Crispy freshly baked sweet waffles with multiple toppings.",
+                hostel: "BH-7",
+                roomNumber: "205",
+                ownerId: ownerNine.id,
+            },
+        }),
+
+        prisma.store.create({
+            data: {
+                name: "Pancake Place",
+                tagline: "Fluffy classic pancakes drizzled with honey and fresh cream.",
+                hostel: "BH-8",
+                roomNumber: "310",
+                ownerId: ownerTen.id,
+            },
+        }),
+
+        prisma.store.create({
+            data: {
+                name: "Salad Station",
+                tagline: "Crispy green garden salads and nutritious healthy options.",
+                hostel: "GH-3",
+                roomNumber: "22",
+                ownerId: ownerEleven.id,
+            },
+        }),
+
+        prisma.store.create({
+            data: {
+                name: "Noodle Nest",
+                tagline: "Stir-fried noodles and delicious chinese starters.",
+                hostel: "GH-4",
+                roomNumber: "05",
+                ownerId: ownerTwelve.id,
             },
         }),
     ]);
@@ -314,6 +480,72 @@ async function main() {
                 imageUrl: "https://images.unsplash.com/photo-1601050690597-df056fb4ce78?auto=format&fit=crop&w=600&q=80",
                 stockQuantity: 18,
                 storeId: stores[5].id,
+            },
+        }),
+
+        // Store 6: Momo Mania
+        prisma.item.create({
+            data: {
+                name: "Steamed Momo Plate",
+                price: 50,
+                imageUrl: "https://images.unsplash.com/photo-1534422298391-e4f8c172dddb?auto=format&fit=crop&w=600&q=80",
+                stockQuantity: 20,
+                storeId: stores[6].id,
+            },
+        }),
+
+        // Store 7: Shawarma Spot
+        prisma.item.create({
+            data: {
+                name: "Classic Chicken Shawarma",
+                price: 80,
+                imageUrl: "https://images.unsplash.com/photo-1524351199679-46cddf530c04?auto=format&fit=crop&w=600&q=80",
+                stockQuantity: 15,
+                storeId: stores[7].id,
+            },
+        }),
+
+        // Store 8: Waffle Works
+        prisma.item.create({
+            data: {
+                name: "Belgian Chocolate Waffle",
+                price: 70,
+                imageUrl: "https://images.unsplash.com/photo-1562376502-6f769499c886?auto=format&fit=crop&w=600&q=80",
+                stockQuantity: 10,
+                storeId: stores[8].id,
+            },
+        }),
+
+        // Store 9: Pancake Place
+        prisma.item.create({
+            data: {
+                name: "Maple Syrup Pancakes",
+                price: 60,
+                imageUrl: "https://images.unsplash.com/photo-1528207776546-365bb710ee93?auto=format&fit=crop&w=600&q=80",
+                stockQuantity: 12,
+                storeId: stores[9].id,
+            },
+        }),
+
+        // Store 10: Salad Station
+        prisma.item.create({
+            data: {
+                name: "Healthy Garden Salad",
+                price: 90,
+                imageUrl: "https://images.unsplash.com/photo-1512621776951-a57141f2eefd?auto=format&fit=crop&w=600&q=80",
+                stockQuantity: 15,
+                storeId: stores[10].id,
+            },
+        }),
+
+        // Store 11: Noodle Nest
+        prisma.item.create({
+            data: {
+                name: "Hakka Noodles Bowl",
+                price: 65,
+                imageUrl: "https://images.unsplash.com/photo-1585032226651-759b368d7246?auto=format&fit=crop&w=600&q=80",
+                stockQuantity: 18,
+                storeId: stores[11].id,
             },
         }),
     ]);
@@ -467,6 +699,113 @@ async function main() {
             status: "REJECTED" as const, // Cancelled
             items: [{ itemId: items[8].id, quantity: 3, unitPrice: items[8].price }],
         },
+        // Historical Completed Orders for userOne (Rahul) to feed User Analytics beautifully:
+        {
+            orderNumber: "H01",
+            userId: userOne.id,
+            storeId: stores[0].id, // Maggi Point
+            totalAmount: items[0].price * 3, // Veg Maggi x3 (120)
+            status: "COMPLETED" as const,
+            createdAt: new Date("2026-05-15T18:30:00Z"),
+            items: [{ itemId: items[0].id, quantity: 3, unitPrice: items[0].price }],
+        },
+        {
+            orderNumber: "H02",
+            userId: userOne.id,
+            storeId: stores[0].id, // Maggi Point
+            totalAmount: items[0].price * 2, // Veg Maggi x2 (80)
+            status: "COMPLETED" as const,
+            createdAt: new Date("2026-04-20T19:00:00Z"),
+            items: [{ itemId: items[0].id, quantity: 2, unitPrice: items[0].price }],
+        },
+        {
+            orderNumber: "H03",
+            userId: userOne.id,
+            storeId: stores[2].id, // Bun & Bite
+            totalAmount: items[6].price * 2, // Sandwich x2 (130)
+            status: "COMPLETED" as const,
+            createdAt: new Date("2026-03-10T12:00:00Z"),
+            items: [{ itemId: items[6].id, quantity: 2, unitPrice: items[6].price }],
+        },
+        {
+            orderNumber: "H04",
+            userId: userOne.id,
+            storeId: stores[0].id, // Maggi Point
+            totalAmount: items[1].price * 1, // Cheese Maggi x1 (60)
+            status: "COMPLETED" as const,
+            createdAt: new Date("2026-02-05T20:15:00Z"),
+            items: [{ itemId: items[1].id, quantity: 1, unitPrice: items[1].price }],
+        },
+        {
+            orderNumber: "H05",
+            userId: userOne.id,
+            storeId: stores[0].id, // Maggi Point
+            totalAmount: items[0].price * 4, // Veg Maggi x4 (160)
+            status: "COMPLETED" as const,
+            createdAt: new Date("2026-01-25T14:45:00Z"),
+            items: [{ itemId: items[0].id, quantity: 4, unitPrice: items[0].price }],
+        },
+        {
+            orderNumber: "H06",
+            userId: userOne.id,
+            storeId: stores[5].id, // Chai Chaska
+            totalAmount: items[12].price * 4 + items[13].price * 1, // Chai x4 (60) + Samosa Plate x1 (30) = 90
+            status: "COMPLETED" as const,
+            createdAt: new Date("2025-12-18T08:30:00Z"),
+            items: [
+                { itemId: items[12].id, quantity: 4, unitPrice: items[12].price },
+                { itemId: items[13].id, quantity: 1, unitPrice: items[13].price },
+            ],
+        },
+        // More high-volume completed orders for Maggi Point (stores[0]) so the owner dashboard looks gorgeous
+        {
+            orderNumber: "M01",
+            userId: userTwo.id,
+            storeId: stores[0].id,
+            totalAmount: items[0].price * 5 + items[1].price * 2, // Classic x5 (200) + Cheese x2 (120) = 320
+            status: "COMPLETED" as const,
+            createdAt: new Date("2026-05-18T21:00:00Z"),
+            items: [
+                { itemId: items[0].id, quantity: 5, unitPrice: items[0].price },
+                { itemId: items[1].id, quantity: 2, unitPrice: items[1].price },
+            ],
+        },
+        {
+            orderNumber: "M02",
+            userId: userThree.id,
+            storeId: stores[0].id,
+            totalAmount: items[0].price * 10, // Classic x10 (400)
+            status: "COMPLETED" as const,
+            createdAt: new Date("2026-05-19T22:30:00Z"),
+            items: [{ itemId: items[0].id, quantity: 10, unitPrice: items[0].price }],
+        },
+        {
+            orderNumber: "M03",
+            userId: userFour.id,
+            storeId: stores[0].id,
+            totalAmount: items[1].price * 5, // Cheese x5 (300)
+            status: "COMPLETED" as const,
+            createdAt: new Date("2026-05-10T19:30:00Z"),
+            items: [{ itemId: items[1].id, quantity: 5, unitPrice: items[1].price }],
+        },
+        {
+            orderNumber: "M04",
+            userId: userFive.id,
+            storeId: stores[0].id,
+            totalAmount: items[0].price * 8, // Classic x8 (320)
+            status: "COMPLETED" as const,
+            createdAt: new Date("2026-05-02T13:10:00Z"),
+            items: [{ itemId: items[0].id, quantity: 8, unitPrice: items[0].price }],
+        },
+        {
+            orderNumber: "M05",
+            userId: userSix.id,
+            storeId: stores[0].id,
+            totalAmount: items[0].price * 6, // Classic x6 (240)
+            status: "COMPLETED" as const,
+            createdAt: new Date("2026-04-28T17:15:00Z"),
+            items: [{ itemId: items[0].id, quantity: 6, unitPrice: items[0].price }],
+        },
     ];
 
     for (const data of orderData) {
@@ -477,6 +816,7 @@ async function main() {
                 storeId: data.storeId,
                 totalAmount: data.totalAmount,
                 status: data.status,
+                createdAt: (data as any).createdAt ?? new Date(),
             },
         });
 

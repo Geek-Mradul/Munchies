@@ -9,7 +9,7 @@ const router = Router();
 
 router.post("/register", async (req, res) => {
     try {
-        const { email, password, firstName } = req.body ?? {};
+        const { email, password, firstName, requestOwner } = req.body ?? {};
 
         if (!email || !password) {
             return res.status(400).json({ message: "Missing email or password" });
@@ -31,12 +31,25 @@ router.post("/register", async (req, res) => {
         const passwordHash =
             await bcrypt.hash(password, 10);
 
-        const user = await prisma.user.create({
-            data: {
-                email,
-                passwordHash,
-                firstName,
-            },
+        const user = await prisma.$transaction(async (tx) => {
+            const newUser = await tx.user.create({
+                data: {
+                    email,
+                    passwordHash,
+                    firstName: firstName || "User",
+                },
+            });
+
+            if (requestOwner) {
+                await tx.storeOwnerRequest.create({
+                    data: {
+                        userId: newUser.id,
+                        status: "PENDING",
+                    },
+                });
+            }
+
+            return newUser;
         });
 
         res.json({

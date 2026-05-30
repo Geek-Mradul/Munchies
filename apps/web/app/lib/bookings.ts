@@ -17,6 +17,7 @@ export type CustomerBooking = {
     orderNumber?: string;
     status: BookingStatus;
     totalAmount: number;
+    createdAt: string;
     store: {
         id: string;
         name: string;
@@ -31,6 +32,7 @@ export type OwnerBooking = {
     orderNumber?: string;
     status: BookingStatus;
     totalAmount: number;
+    createdAt: string;
     store: {
         id: string;
         name: string;

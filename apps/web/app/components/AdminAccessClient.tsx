@@ -144,7 +144,7 @@ export default function AdminAccessClient() {
                     Sign in to manage stores, sellers, and the Munchies platform.
                 </p>
 
-                <form className="mt-6 space-y-4" onSubmit={handleAdminLogin}>
+                <form className="mt-6 space-y-4" method="POST" onSubmit={handleAdminLogin}>
                     <div>
                         <label htmlFor="admin-email" className="mb-2 block text-sm font-semibold text-gray-700">
                             Email
@@ -155,6 +155,7 @@ export default function AdminAccessClient() {
                             type="email"
                             required
                             autoComplete="email"
+                            placeholder="admin@munchies.com"
                             className="w-full rounded-2xl border border-gray-200 bg-white px-4 py-3 text-gray-900 outline-none transition focus:border-orange-400 focus:ring-4 focus:ring-orange-100"
                         />
                     </div>
@@ -169,6 +170,7 @@ export default function AdminAccessClient() {
                             type="password"
                             required
                             autoComplete="current-password"
+                            placeholder="••••••••"
                             className="w-full rounded-2xl border border-gray-200 bg-white px-4 py-3 text-gray-900 outline-none transition focus:border-orange-400 focus:ring-4 focus:ring-orange-100"
                         />
                     </div>
